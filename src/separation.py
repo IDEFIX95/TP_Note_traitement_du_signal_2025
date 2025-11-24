@@ -1,9 +1,13 @@
 import os
+import inspect
 import glob
-import numpy as np
+import torch
+from demucs.pretrained import get_model
+from demucs.apply import apply_model
 import librosa
 import soundfile as sf
 import matplotlib.pyplot as plt
+import numpy as np
 
 ## Paramètres globaux
 SR = 22050 #Sample Rate (fréquence d'échantillonage)
@@ -190,14 +194,56 @@ def save_mask_frequency_plot(M_voice, sr, title, out_path):
     plt.close()
 
 ##Comparaison avec modèle de ML
-#Installer Spleeter ou Demucs (pas du python)
-#Terminal -> spleeter separate -i data/track1.wav -p spleeter:2stems -o results_spleeter
-#Création de : results_spleeter/track1/
-#    vocals.wav
-#    accompaniment.wav
-#Chargement des fichiers:
-#vocals, sr_v = librosa.load("results_spleeter/track1/vocals.wav", sr=SR, mono=True)
-#accomp, sr_a = librosa.load("results_spleeter/track1/accompaniment.wav", sr=SR, mono=True)
+#pip install demucs pour installer le modèle
+import torchaudio
+import torch
+from demucs.pretrained import get_model
+from demucs.apply import apply_model
+
+def separate_demucs(wav_path, out_subdir, sr_target=44100):
+    """
+    Sépare un mix en (voice_demucs, instr_demucs) avec Demucs
+    en utilisant librosa pour le chargement (pas torchaudio).
+    """
+
+    print("  -> Demucs en cours...")
+
+    # 1) Charger le fichier audio
+    y, sr = librosa.load(wav_path, sr=sr_target, mono=False)
+
+    # Convertir en stéréo si mono
+    if y.ndim == 1:
+        y = np.stack([y, y], axis=0)   # (2, T)
+
+    # (channels, time) -> Tensor (1, channels, time)
+    mix = torch.from_numpy(y).float().unsqueeze(0)  # (1, 2, T)
+
+    # 2) Charger le modèle Demucs
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = get_model("htdemucs").to(device)
+    model.eval()
+
+    mix = mix.to(device)
+
+    # 3) Appliquer le modèle
+    with torch.no_grad():
+        estimates = apply_model(model, mix, split=True, overlap=0.25)[0]
+
+    # Ordre : [drums, bass, other, vocals]
+    drums, bass, other, vocals = estimates
+
+    # 4) Accompagnement = drums + bass + other
+    accomp = drums + bass + other
+
+    # 5) Convertir en numpy (T, C)
+    vocals_np = vocals.cpu().numpy().transpose(1, 0)
+    accomp_np = accomp.cpu().numpy().transpose(1, 0)
+
+    # 6) Sauvegarde
+    sf.write(os.path.join(out_subdir, "voice_demucs.wav"), vocals_np, sr_target)
+    sf.write(os.path.join(out_subdir, "instr_demucs.wav"), accomp_np, sr_target)
+
+    print("  -> Fichiers Demucs écrits.")
 
 ##Visualisation:
 def plot_spectrogram(S, sr, title):
@@ -209,7 +255,6 @@ def plot_spectrogram(S, sr, title):
     plt.title(title)
     plt.tight_layout()
     plt.show()
-
 
 def plot_example(file_path):
     mix, sr = load_audio(file_path)
@@ -224,8 +269,12 @@ def plot_example(file_path):
     plot_spectrogram(S_voice_band, sr, "Spectrogramme voix (bande)")
 
 ##Boucle sur tous les fichiers du dataset:
-DATA_DIR = r"C:\Users\emine\Desktop\projet_separation\data\Mixes"
-OUT_DIR = r"C:\Users\emine\Desktop\projet_separation\results"
+script_path = os.path.abspath(inspect.getfile(inspect.currentframe()))
+script_dir  = os.path.dirname(script_path)
+
+BASE_DIR = os.path.abspath(os.path.join(script_dir, ".."))
+DATA_DIR = os.path.join(BASE_DIR, "data", "Mixes")
+OUT_DIR  = os.path.join(BASE_DIR, "results")
 
 print("Répertoire courant :", os.getcwd())
 print("DATA_DIR =", DATA_DIR)
@@ -307,7 +356,17 @@ for wav_path in wav_paths:
     sf.write(os.path.join(out_subdir, "instr_hybrid.wav"), y_i_hybrid, sr)
     print("  -> fichiers hybrides écrits")
 
-    # Sauvegarde du masque hybride (en fréquence)
+    # --------------------------------------------------------
+    # 5) DEMUCS (modèle ML SOTA)
+    # --------------------------------------------------------
+    try:
+        separate_demucs(wav_path, out_subdir)
+    except Exception as e:
+        print(f"  !! ERREUR DEMUCS : {e}")
+
+    # --------------------------------------------------------
+    # 6) SAUVEGARDER LES PLOTS
+    # --------------------------------------------------------
     save_mask_frequency_plot(
         M_voice_hybrid,
         sr,
