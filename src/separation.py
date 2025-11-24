@@ -8,9 +8,6 @@ import librosa
 import soundfile as sf
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.decomposition import NMF
-import numpy.linalg as LA
-
 
 ## Paramètres globaux
 SR = 22050 #Sample Rate (fréquence d'échantillonage)
@@ -130,7 +127,6 @@ def soft_band_mask(sr, n_fft, f_low=80, f_high=4000, width=200):
     M_instr = 1.0 - M_voice
     return M_voice, M_instr
 
-#Masque 3 - masque hybride
 def hybrid_mask(S_mix, mag_mix, sr):
     # 1) prior bande douce
     M_band_voice, _ = soft_band_mask(sr, N_FFT)
@@ -167,7 +163,6 @@ def separate_hybrid(mix, sr):
     y_instr = normalize(istft(S_instr))
     return y_voice, y_instr, M_voice
 
-#Affichage graphique
 def save_mask_frequency_plot(M_voice, sr, title, out_path):
     """
     M_voice : masque voix (freq x temps), valeurs 0..1
@@ -198,145 +193,7 @@ def save_mask_frequency_plot(M_voice, sr, title, out_path):
     plt.savefig(out_path)
     plt.close()
 
-##Méthodes plus efficaces
-def nmf_component_voice_mask(W, sr, n_fft, f_low=200, f_high=4000, ratio_thresh=0.6):
-    """
-    Détermine quelles composantes NMF sont plutôt 'voix', en
-    regardant la part d'énergie dans la bande [f_low, f_high].
-
-    W : (freq, n_components)
-    Retourne : indices_voix (liste d'entiers)
-    """
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    band = (freqs >= f_low) & (freqs <= f_high)
-
-    voice_like = []
-    for k in range(W.shape[1]):
-        w_k = W[:, k]
-        total = np.sum(w_k) + 1e-8
-        in_band = np.sum(w_k[band])
-        ratio = in_band / total
-        if ratio >= ratio_thresh:
-            voice_like.append(k)
-
-    return voice_like
-
-def separate_nmf(mix, sr, n_components=8):
-    """
-    Sépare le mix via NMF sur le module du spectrogramme.
-    - n_components : nombre de composantes NMF
-    """
-    S_mix, mag_mix, phase_mix = stft(mix)  # mag_mix : (freq, time)
-
-    V = mag_mix  # alias
-
-    # NMF sur V (non-négatif)
-    model = NMF(n_components=n_components, init='random',
-                random_state=0, max_iter=500)
-    W = model.fit_transform(V)      # (freq, n_components)
-    H = model.components_           # (n_components, time)
-
-    # Choix des composantes 'voix'
-    voice_ids = nmf_component_voice_mask(W, sr, N_FFT)
-    if len(voice_ids) == 0:
-        # fallback : si rien trouvé, on prend la composante la plus énergétique
-        energies = W.sum(axis=0)
-        voice_ids = [int(np.argmax(energies))]
-
-    # Reconstruction V_voice, V_instr
-    V_voice = np.zeros_like(V)
-    for k in voice_ids:
-        V_voice += np.outer(W[:, k], H[k, :])
-
-    V_instr = np.clip(V - V_voice, 0, None)
-
-    # Masques soft de type Wiener
-    eps = 1e-8
-    denom = V_voice + V_instr + eps
-    M_voice = V_voice / denom
-    M_instr = V_instr / denom
-
-    # Application aux STFT complexes
-    S_voice = M_voice * S_mix
-    S_instr = M_instr * S_mix
-
-    y_voice = normalize(istft(S_voice))
-    y_instr = normalize(istft(S_instr))
-
-    return y_voice, y_instr, M_voice
-
-def rpca(M, lam=None, mu=None, max_iter=100, tol=1e-7):
-    """
-    RPCA via Inexact Augmented Lagrange Multiplier (Candes et al.)
-    M : matrice (freq x time) non-négative (mag spectrogram)
-    Retourne : L (low-rank), S (sparse)
-    """
-    M = M.astype(float)
-    m, n = M.shape
-
-    if lam is None:
-        lam = 1.0 / np.sqrt(max(m, n))
-
-    norm_M = LA.norm(M, ord='fro')
-
-    # initialisation
-    L = np.zeros_like(M)
-    S = np.zeros_like(M)
-    Y = M / max(LA.norm(M, 2), LA.norm(M, np.inf) / lam)
-
-    if mu is None:
-        mu = 1.25 / LA.norm(M, 2)  # estimation
-    mu_bar = mu * 1e7
-    rho = 1.5
-
-    for it in range(max_iter):
-        # 1) SVD sur (M - S + (1/mu)Y)
-        U, sigma, Vt = LA.svd(M - S + (1.0 / mu) * Y, full_matrices=False)
-        # seuillage des valeurs singulières
-        sigma_thresh = np.maximum(sigma - 1.0 / mu, 0)
-        rank = np.sum(sigma_thresh > 0)
-        L = (U[:, :rank] * sigma_thresh[:rank]) @ Vt[:rank, :]
-
-        # 2) seuillage L1 pour S
-        residual = M - L + (1.0 / mu) * Y
-        S = np.sign(residual) * np.maximum(np.abs(residual) - lam / mu, 0)
-
-        # 3) mise à jour Y, mu
-        Z = M - L - S
-        Y = Y + mu * Z
-        mu = min(mu * rho, mu_bar)
-
-        err = LA.norm(Z, 'fro') / (norm_M + 1e-8)
-        if err < tol:
-            break
-    return L, S
-
-def separate_rpca(mix, sr):
-    """
-    Sépare le mix en utilisant RPCA sur le module du spectrogramme.
-    Low-rank = instru, Sparse = voix.
-    """
-    S_mix, mag_mix, phase_mix = stft(mix)
-
-    # RPCA sur la magnitude
-    L, S = rpca(mag_mix)
-
-    V_instr = np.clip(L, 0, None)
-    V_voice = np.clip(S, 0, None)
-
-    eps = 1e-8
-    denom = V_voice + V_instr + eps
-    M_voice = V_voice / denom
-    M_instr = V_instr / denom
-
-    S_voice = M_voice * S_mix
-    S_instr = M_instr * S_mix
-
-    y_voice = normalize(istft(S_voice))
-    y_instr = normalize(istft(S_instr))
-
-    return y_voice, y_instr, M_voice
-
+'''
 ##Comparaison avec modèle de ML
 #pip install demucs pour installer le modèle
 import torchaudio
@@ -388,6 +245,7 @@ def separate_demucs(wav_path, out_subdir, sr_target=44100):
     sf.write(os.path.join(out_subdir, "instr_demucs.wav"), accomp_np, sr_target)
 
     print("  -> Fichiers Demucs écrits.")
+'''
 
 ##Visualisation:
 def plot_spectrogram(S, sr, title):
@@ -413,10 +271,7 @@ def plot_example(file_path):
     plot_spectrogram(S_voice_band, sr, "Spectrogramme voix (bande)")
 
 ##Boucle sur tous les fichiers du dataset:
-script_path = os.path.abspath(inspect.getfile(inspect.currentframe()))
-script_dir  = os.path.dirname(script_path)
-
-BASE_DIR = os.path.abspath(os.path.join(script_dir, ".."))
+BASE_DIR = os.getcwd()
 DATA_DIR = os.path.join(BASE_DIR, "data", "Mixes")
 OUT_DIR  = os.path.join(BASE_DIR, "results")
 
@@ -499,54 +354,20 @@ for wav_path in wav_paths:
     sf.write(os.path.join(out_subdir, "voice_hybrid.wav"), y_v_hybrid, sr)
     sf.write(os.path.join(out_subdir, "instr_hybrid.wav"), y_i_hybrid, sr)
     print("  -> fichiers hybrides écrits")
-
+    
+    '''
+        # --------------------------------------------------------
+        # 5) DEMUCS (modèle ML SOTA)
+        # --------------------------------------------------------
+        try:
+            separate_demucs(wav_path, out_subdir)
+        except Exception as e:
+            print(f"  !! ERREUR DEMUCS : {e}")
+    '''
     # --------------------------------------------------------
-    # 5) DEMUCS (modèle ML SOTA)
+    # 6) SAUVEGARDER LES PLOTS
     # --------------------------------------------------------
-    try:
-        separate_demucs(wav_path, out_subdir)
-    except Exception as e:
-        print(f"  !! ERREUR DEMUCS : {e}")
-
-    # --------------------------------------------------------
-    # 6) NMF
-    # --------------------------------------------------------
-    try:
-        y_v_nmf, y_i_nmf, M_voice_nmf = separate_nmf(mix, sr, n_components=8)
-        sf.write(os.path.join(out_subdir, "voice_nmf.wav"), y_v_nmf, sr)
-        sf.write(os.path.join(out_subdir, "instr_nmf.wav"), y_i_nmf, sr)
-        print("  -> fichiers NMF écrits")
-
-        save_mask_frequency_plot(
-            M_voice_nmf,
-            sr,
-            f"Masque NMF - {base}",
-            os.path.join(out_subdir, "mask_nmf_freqs.png")
-        )
-    except Exception as e:
-        print(f"  !! ERREUR NMF : {e}")
-
-    # --------------------------------------------------------
-    # 7) RPCA
-    # --------------------------------------------------------
-    try:
-        y_v_rpca, y_i_rpca, M_voice_rpca = separate_rpca(mix, sr)
-        sf.write(os.path.join(out_subdir, "voice_rpca.wav"), y_v_rpca, sr)
-        sf.write(os.path.join(out_subdir, "instr_rpca.wav"), y_i_rpca, sr)
-        print("  -> fichiers RPCA écrits")
-
-        save_mask_frequency_plot(
-            M_voice_rpca,
-            sr,
-            f"Masque RPCA - {base}",
-            os.path.join(out_subdir, "mask_rpca_freqs.png")
-        )
-    except Exception as e:
-        print(f"  !! ERREUR RPCA : {e}")
-
-    # --------------------------------------------------------
-    # 8) SAUVEGARDER LES PLOTS
-    # --------------------------------------------------------
+    
     save_mask_frequency_plot(
         M_voice_hybrid,
         sr,
