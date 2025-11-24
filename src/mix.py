@@ -65,7 +65,7 @@ def generate_all_mixes(vocals_folder, instru_folder, output_folder):
 
 if __name__ == "__main__":
     #on se place dans le fichier data contenant les données
-    base = "../data"
+    base = os.path.join(os.path.join(os.getcwd(), os.pardir), "data")
 
     vocals_folder = os.path.join(base, "Vocals")
     instru_folder = os.path.join(base, "Instrumentals")
