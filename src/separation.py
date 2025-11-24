@@ -79,14 +79,23 @@ def separate_hpss(mix):
     y_p = normalize(istft(P))  # partie percussive
     return y_h, y_p
 
-#Masque 3 - Méthode par variabilité temporelle
-def variability_mask(mag_mix, threshold=0.4):
-    # variation temporelle pour chaque fréquence
-    variation = np.mean(np.abs(np.diff(mag_mix, axis=1)), axis=1)
-    variation = variation / (np.max(variation) + 1e-8)
+# Masque 3 - Méthode par variabilité temporelle (temps-fréquence)
+def variability_mask(mag_mix, alpha=2.0):
+    """
+    mag_mix : (freq, time)
+    alpha   : contraste (plus grand = voix plus marquée)
+    """
+    # dérivée temporelle locale (variation dans le temps)
+    diff_t = np.abs(np.diff(mag_mix, axis=1))  # (freq, time-1)
 
-    voice_like = variation > threshold
-    M_voice = voice_like[:, None].astype(float)
+    # on remet à la même taille
+    var_local = np.pad(diff_t, ((0, 0), (0, 1)), mode='edge')
+
+    # normalisation 0..1
+    var_norm = var_local / (np.max(var_local) + 1e-8)
+
+    # masque soft : fréquences + instants très variables = plutôt voix
+    M_voice = var_norm ** alpha        # 0..1
     M_instr = 1.0 - M_voice
     return M_voice, M_instr
 
@@ -94,7 +103,7 @@ def variability_mask(mag_mix, threshold=0.4):
 def separate_variability(mix):
     S_mix, mag_mix, phase_mix = stft(mix)
 
-    M_voice, M_instr = variability_mask(mag_mix, threshold=0.4)
+    M_voice, M_instr = variability_mask(mag_mix, alpha=2.0)
 
     S_voice = M_voice * S_mix
     S_instr = M_instr * S_mix
@@ -102,6 +111,53 @@ def separate_variability(mix):
     y_voice = normalize(istft(S_voice))
     y_instr = normalize(istft(S_instr))
     return y_voice, y_instr
+
+def soft_band_mask(sr, n_fft, f_low=80, f_high=4000, width=200):
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+
+    low_slope  = np.clip((freqs - (f_low - width)) / width, 0, 1)
+    high_slope = np.clip(((f_high + width) - freqs) / width, 0, 1)
+
+    band = low_slope * high_slope  # 0..1
+    M_voice = band[:, None]        # (freq, 1)
+    M_instr = 1.0 - M_voice
+    return M_voice, M_instr
+
+def hybrid_mask(S_mix, mag_mix, sr):
+    # 1) prior bande douce
+    M_band_voice, _ = soft_band_mask(sr, N_FFT)
+
+    # 2) HPSS
+    H, P = librosa.decompose.hpss(S_mix)
+    mag_H = np.abs(H)
+    mag_P = np.abs(P)
+    M_hpss = mag_H / (mag_H + mag_P + 1e-8)  # voix ≈ partie harmonique
+
+    # 3) Variabilité temps-fréquence
+    M_var_voice, _ = variability_mask(mag_mix, alpha=2.0)
+
+    # M_band_voice : (freq,1) -> (freq,time)
+    M_band_voice_full = np.repeat(M_band_voice, mag_mix.shape[1], axis=1)
+
+    # Combinaison multiplicative + normalisation
+    M_comb = M_band_voice_full * M_hpss * (0.5 + 0.5 * M_var_voice)
+    M_comb = M_comb / (np.max(M_comb) + 1e-8)
+
+    M_voice = M_comb
+    M_instr = 1.0 - M_voice
+    return M_voice, M_instr
+
+
+def separate_hybrid(mix, sr):
+    S_mix, mag_mix, phase_mix = stft(mix)
+    M_voice, M_instr = hybrid_mask(S_mix, mag_mix, sr)
+
+    S_voice = M_voice * S_mix
+    S_instr = M_instr * S_mix
+
+    y_voice = normalize(istft(S_voice))
+    y_instr = normalize(istft(S_instr))
+    return y_voice, y_instr, M_voice
 
 def save_mask_frequency_plot(M_voice, sr, title, out_path):
     """
@@ -239,7 +295,25 @@ for wav_path in wav_paths:
     print("  -> fichiers variabilité écrits")
 
     # masque variabilité
-    M_voice_var, M_instr_var = variability_mask(mag_mix, threshold=0.4)
+
+    M_voice_var, M_instr_var = variability_mask(mag_mix, alpha=2.0)
+
+    # --------------------------------------------------------
+    # 4) MASQUE HYBRIDE (bande douce + HPSS + variabilité)
+    # --------------------------------------------------------
+    y_v_hybrid, y_i_hybrid, M_voice_hybrid = separate_hybrid(mix, sr)
+
+    sf.write(os.path.join(out_subdir, "voice_hybrid.wav"), y_v_hybrid, sr)
+    sf.write(os.path.join(out_subdir, "instr_hybrid.wav"), y_i_hybrid, sr)
+    print("  -> fichiers hybrides écrits")
+
+    # Sauvegarde du masque hybride (en fréquence)
+    save_mask_frequency_plot(
+        M_voice_hybrid,
+        sr,
+        f"Masque Hybride - {base}",
+        os.path.join(out_subdir, "mask_hybrid_freqs.png")
+    )
 
     save_mask_frequency_plot(
         M_voice_var,
