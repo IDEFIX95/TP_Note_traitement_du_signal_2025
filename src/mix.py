@@ -65,7 +65,7 @@ def generate_all_mixes(vocals_folder, instru_folder, output_folder):
 
 if __name__ == "__main__":
     #on se place dans le fichier data contenant les données
-    base = r"C:\Users\emine\Desktop\projet_separation\data"
+    base = "../data"
 
     vocals_folder = os.path.join(base, "Vocals")
     instru_folder = os.path.join(base, "Instrumentals")
