@@ -1,0 +1,818 @@
+\documentclass[a4paper,12pt]{report}
+
+\usepackage{amsthm,amsmath,stmaryrd,bbm,amssymb, mathrsfs, amsbsy, dsfont}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[french]{babel}
+\usepackage[utf8]{inputenc}
+%\usepackage[scale = .7]{geometry}
+
+\usepackage{graphicx}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage{etoolbox}
+\usepackage{hyperref}
+\usepackage{todonotes}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+
+\setcounter{tocdepth}{2}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Environnements théorèmes/lemmes/etc.%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\theoremstyle{plain}
+\newtheorem{theo}{Théorème}
+\theoremstyle{remark}
+\newtheorem{rem}[theo]{Remarque}
+\theoremstyle{definition}
+\newtheorem{defi}[theo]{Définition}
+\newtheorem{assu}[theo]{Assumption}
+\theoremstyle{remark}
+\newtheorem{exemple}[theo]{Exemple}
+\theoremstyle{definition}
+\newtheorem{notation}[theo]{Notation}
+\theoremstyle{definition}
+\newtheorem{rappel}[theo]{Rappel}
+
+
+%%%%%%%%%%%%%%%%%%%
+%% Numérotation %%
+%%%%%%%%%%%%%%%%%%%
+\numberwithin{equation}{section}
+\numberwithin{theo}{section}
+
+%%%%%%%%%%%%%%%%%%%
+%%% Inégalités %%%
+%%%%%%%%%%%%%%%%%%%
+\def\le{\leqslant}
+\def\ge{\geqslant}
+\def\les{\lesssim}
+
+
+%%%%%%%%%%%%%%%%%%%%%
+% COMMANDES UTILES
+%%%%%%%%%%%%%%%%%%%%%
+\def\eps{\varepsilon}
+\newcommand{\dint}{\,\mathrm{d}}
+\newcommand{\fft}{\mathrm{FFT}}
+\newcommand{\ifft}{\mathrm{IFFT}}
+
+%%%%%%%%%%%%%%%%%%%%%
+% PAGE DE GARDE
+%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+
+    \vspace*{2cm}
+    {\Huge \textbf{Projet : Séparation Voix / Instrumental}}\\[0.5cm]
+    {\Large \textbf{Traitement du Signal — CY Tech}}\\[2cm]
+
+    \includegraphics[width=8cm]{figures/logo_cytech.png}\\[1cm]
+
+    {\large
+    Rayane Manseur \\
+    Rayan Hussein \\
+    Emine Ould Agatt \\
+    Florian Vo \\
+    Romain Bowé \\
+    Clément Rimbeuf \\
+    Anthusan Srikaran
+    }\\[1cm]
+
+    Encadré par : \textbf{Mohamed Bahtiti}\\[1cm]
+
+    {\large Novembre 2025}\\
+    \vfill
+\end{titlepage}
+
+%%%%%%%%%%%%%%%%%%%%%
+% Table des matières
+%%%%%%%%%%%%%%%%%%%%%
+
+\tableofcontents
+\newpage
+
+
+
+\chapter*{Introduction}
+
+Le traitement du signal joue un rôle clé dans de nombreux domaines scientifiques et industriels, notamment dans le traitement des signaux audio, avec des applications telles que la séparation de sources. Ce projet se concentre sur la séparation d’un morceau de musique en deux pistes distinctes : l’instrumental et la voix. Pour cela, nous avons utilisé des méthodes classiques de séparation audio, telles que le filtrage fréquentiel et la séparation harmonique.
+
+L’objectif principal de ce projet est de maîtriser les fondements théoriques et techniques des méthodes de séparation audio, en les appliquant à un projet pratique en Python. Nous avons utilisé des bibliothèques telles que NumPy, SciPy, Librosa et Matplotlib pour implémenter ces techniques. En plus de la séparation, nous avons évalué les performances des différentes méthodes via des métriques standard telles que le SDR, le SIR et le SAR.
+
+Le projet se décompose en plusieurs étapes : préparation du dataset audio, analyse fréquentielle des signaux via la FFT, implémentation de plusieurs méthodes de séparation, puis reconstruction des signaux dans les domaines temporel et fréquentiel. Enfin, nous avons comparé les résultats obtenus avec différentes approches pour en évaluer l’efficacité.
+
+\chapter{Théorie, Dataset et Implémentation Python}
+
+\section{Théorie du traitement du signal}
+
+La séparation de l'instrumental et de la voix d'une musique est un exemple typique de
+\emph{séparation de sources}, un problème fondamental du traitement du signal audio.
+Étant donné un signal mixé
+\[
+x(t) = v(t) + i(t),
+\]
+où $v(t)$ désigne la voix et $i(t)$ l’instrumental, l’objectif est de construire deux estimations
+\[
+\hat v(t) \approx v(t), \qquad \hat i(t) \approx i(t),
+\]
+de manière à isoler au mieux les composantes originales.
+\\
+Pour cela, il est souvent plus pertinent de travailler dans le domaine fréquentiel. En effet, un signal audio
+continu $x(t)$ peut être représenté par sa Transformée de Fourier continue :
+\[
+X(\omega) = \int_{-\infty}^{+\infty} x(t)\, e^{-i\omega t}\, \mathrm{d}t,
+\]
+où $\omega$ représente une fréquence angulaire (en radians par seconde). Cette expression est continue et intégrale car elle correspond à un signal $x(t)$ lui-même continu dans le temps. 
+
+\newpage
+
+\subsection{Discrétisation : de la transformée continue à la DFT}
+
+En pratique, les signaux audio manipulés en informatique sont déjà \textbf{discrétisés} :
+\begin{itemize}
+    \item le temps est discrétisé par l’échantillonnage, donnant $x[n] = x(nT_s)$ ;
+    \item l’amplitude est discrétisée (quantification), car stockée en binaire (16 bits, 24 bits, etc.).
+\end{itemize}
+Ici, $T_s$ est la période d’échantillonnage et la fréquence d’échantillonnage vaut $f_s = 1/T_s$ (ex.~: 22050 Hz).
+
+Ainsi, l’intégrale continue de Fourier devient inutile : le signal est une suite de $N$ valeurs
+\[
+x[0],\, x[1],\, ...,\, x[N-1],
+\]
+et la transformée de Fourier se \emph{discrétise naturellement} sous la forme d’une Transformée de Fourier Discrète (DFT).
+
+\begin{rappel}[Transformée de Fourier Discrète]\label{rappel : Transformée de Fourier Discrète}
+La DFT d’un signal $x[n]$ est définie par :
+    \[
+    X[k] = \sum_{n=0}^{N-1} x[n]\, e^{\frac{-2\pi i nk}{N}},
+    \]
+    où :
+    \begin{itemize}
+        \item $n$ : indice temporel discret (échantillons),
+        \item $k$ : indice fréquentiel (de $0$ à $N-1$),
+        \item $N$ : nombre total d’échantillons analysés,
+        \item $e^{\frac{-2\pi i nk}{N}}$ : noyau complexe décrivant une oscillation sinusoïdale discrète,
+        \item $X[k]$ : contribution (amplitude et phase) de la fréquence discrète $k$.
+    \end{itemize}    
+\end{rappel}
+Chaque valeur $X[k]$ représente donc la quantité de fréquence
+\[
+f_k = \frac{k f_s}{N}
+\]
+présente dans le signal.
+
+\begin{rappel}[Transformée de Fourier Discrète Inverse]\label{rappel : Transformée fourier discrète inverse}
+    L’opération inverse, permettant de reconstruire le signal temporel, est la Transformée de Fourier Inverse (IDFT) :
+    \[
+    x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{\frac{2\pi i nk}{N}}.
+    \]     
+\end{rappel}
+
+Ainsi, après avoir vu la discrétisation et la transformation en DFT/IDFT, il est naturel de passer à une
+représentation temps–fréquence locale mieux adaptée aux signaux audio réels : la \textbf{Transformée de Fourier
+à Court Terme} (STFT), ainsi que sa version inverse (ISTFT) utilisée pour la reconstruction.
+
+\subsection{Transformée de Fourier à court terme (STFT) et reconstruction (ISTFT)}
+
+La DFT fournit une analyse fréquentielle \emph{globale} du signal sur toute sa durée. Or, un signal audio
+(parole, chant, musique) est en général non stationnaire : son contenu spectral évolue avec le temps.
+Pour capturer ces variations locales, on utilise une représentation \textbf{temps–fréquence} : la
+Transformée de Fourier à Court Terme (STFT).
+
+\begin{defi}[Transformée de Fourier à court terme]\label{defi : STFT}
+Soit $w[n]$ une fenêtre d'analyse de longueur $N_w$ (par exemple une fenêtre de Hann) et $H$ un pas de
+déplacement (\emph{hop size}). La STFT d’un signal discret $x[n]$ est définie par :
+\[
+S[m,k] = \sum_{n=0}^{N_w-1} x[n + mH]\; w[n]\; e^{\frac{-2\pi i nk }{N_w}},
+\]
+où :
+\begin{itemize}
+    \item $m$ : indice de trame temporelle (frame),
+    \item $k$ : indice fréquentiel ($0 \leq k < N_w$),
+    \item $N_w$ : taille de la fenêtre,
+    \item $H$ : pas de décalage entre deux fenêtres successives,
+    \item $w[n]$ : fenêtre d’analyse (Hann, Hamming, Blackman, etc.),
+    \item $S[m,k]$ : coefficient complexe décrivant le contenu fréquentiel autour de la fréquence
+          $f_k = \dfrac{k f_s}{N_w}$ pour la trame $m$.
+\end{itemize}
+\end{defi}
+Chaque coefficient peut s’écrire sous la forme polaire :
+\[
+S[m,k] = |S[m,k]|\, e^{i\phi(m,k)},
+\]
+où $|S[m,k]|$ est le \textbf{module} (amplitude locale) et $\phi(m,k)$ la \textbf{phase}.
+
+La représentation
+\[
+(m,k) \longmapsto |S[m,k]|^2
+\]
+est appelée \textbf{spectrogramme} : c’est cette image temps–fréquence que nous exploitons pour construire les
+masques et visualiser la répartition d’énergie entre voix et instrumental.
+
+
+\begin{defi}[Transformée de Fourier à court terme inverse]\label{defi : ISTFT}
+Après modification du spectrogramme (application de masques, filtrage, etc.), il est nécessaire de revenir
+au domaine temporel. La reconstruction est assurée par l’ISTFT, qui effectue une synthèse par
+\emph{chevauchement-addition} (\emph{overlap-add}) des trames :
+\[
+\tilde{x}[n] = \sum_{m} \sum_{k=0}^{N_w-1} S[m,k]\; e^{\frac{2\pi i k (n - mH)}{N_w}}\; g[n - mH],
+\]
+où :
+\begin{itemize}
+    \item $g[\cdot]$ est une fenêtre de synthèse (souvent identique ou liée à $w[\cdot]$),
+    \item la somme sur $m$ recolle les trames temporelles en les chevauchant,
+    \item $\tilde{x}[n]$ est le signal reconstruit.
+\end{itemize}    
+\end{defi}
+Sous des conditions classiques sur le choix de la fenêtre et du pas $H$ (condition de recouvrement),
+la reconstruction peut être \emph{exacte} lorsque le spectrogramme n’a pas été modifié.
+
+
+\subsection{FFT et travail dans le domaine fréquentiel}
+
+En pratique, la DFT n’est jamais calculée directement, car sa complexité est trop élevée (\(O(N^2)\)).
+On utilise sa version optimisée, la \textbf{Fast Fourier Transform (FFT)}, qui réduit la complexité à \(O(N \log N)\), permettant d’analyser efficacement des signaux audio comportant plusieurs centaines de milliers d’échantillons.
+
+La représentation fréquentielle obtenue permet d'identifier la répartition des énergies dans les différentes bandes de fréquences. Par exemple :
+\begin{itemize}
+    \item la voix humaine se situe principalement entre \(\sim 80\,\text{Hz}\) et \(4000\,\text{Hz}\),
+    \item les percussions présentent des variations très rapides dans le temps,
+    \item les instruments harmoniques ont des structures récurrentes en fréquence.
+\end{itemize}
+Ces observations motivent l’usage de \emph{masques temps–fréquence}, notés \(M(f,t)\), appliqués au spectrogramme pour isoler ou atténuer certaines composantes selon leur comportement spectral ou temporel. Les méthodes utilisées dans ce projet — filtrage fréquentiel, HPSS, variabilité temporelle, approche hybride — s’inscrivent toutes dans ce cadre conceptuel.
+
+\section{Implémentation Python}
+
+L’implémentation Python constitue le cœur opérationnel de ce projet. Elle regroupe l’ensemble des fonctions nécessaires à la lecture, au traitement, à la séparation et à l’évaluation des signaux audio. Le code a été structuré de manière modulaire afin de permettre l’ajout ou la modification de méthodes de séparation sans altérer l’architecture générale du programme.
+
+\subsection{Préparation et sélection des données}
+
+La première étape du projet a consisté à constituer un ensemble de données adapté à la tâche de séparation voix/instrumental.
+Contrairement à de nombreux travaux qui s'appuient sur des bases déjà mélangées (telles que MUSDB18), nous avons choisi de
+\textbf{générer nous-mêmes les mélanges audio} afin de disposer d’un contrôle total sur les sources et d’un ground truth parfait.
+
+\medskip
+
+Pour chaque morceau sélectionné, nous disposions de deux fichiers séparés :
+\begin{itemize}
+    \item une piste vocale pure \(v(t)\),
+    \item une piste instrumentale pure \(i(t)\).
+\end{itemize}
+Afin de créer les fichiers à séparer, nous avons développé un script dédié : \texttt{src/mix.py}.  
+Ce script prend en entrée les deux pistes et construit le mix selon la relation linéaire :
+\[
+x(t) = \alpha\, v(t) + \beta\, i(t),
+\]
+où \(\alpha\) et \(\beta\) sont des gains appliqués respectivement à la voix et à l’instrumental.  
+Dans le cadre de ce projet, ces coefficients ont été fixés de manière raisonnable afin d’obtenir un mix équilibré, 
+sans saturation ni dominance excessive d’une source.
+
+Le rôle principal de \texttt{mix.py} est de :
+\begin{itemize}
+    \item aligner temporellement les pistes si nécessaire,
+    \item ajuster les niveaux de la voix et de l’instrumental,
+    \item normaliser le mix final,
+    \item sauvegarder automatiquement les fichiers obtenus dans \texttt{data/Mixes/}.
+\end{itemize}
+Ainsi, tous les fichiers présents dans \texttt{Mixes/} sont des mélanges dont nous connaissons exactement la composition, 
+ce qui garantit une évaluation fiable et reproductible dans la suite du projet.
+
+\medskip
+
+Concernant la sélection des morceaux, nous avons volontairement écarté les pistes présentant une orchestration trop dense 
+ou des effets vocaux complexes (réverbérations prononcées, distorsions, \emph{scream}, etc.).  
+Ces phénomènes enrichissent le spectre de manière chaotique et compliquent considérablement la séparation temps-fréquence.
+
+Nous avons donc privilégié des morceaux comportant :
+\begin{itemize}
+    \item une voix principale claire et bien isolée,
+    \item une accompagnement instrumental relativement simple,
+    \item une texture sonore compatible avec les hypothèses des méthodes utilisées
+          (bandes fréquentielles vocales bien identifiables, partie harmonique stable, etc.).
+\end{itemize}
+La structure du jeu de données a été organisée de manière systématique :
+\begin{itemize}
+    \item \texttt{Mixes/} : les mélanges générés automatiquement,
+    \item \texttt{Vocals/} : les pistes vocales de référence,
+    \item \texttt{Instrumentals/} : les instrumentaux de référence.
+\end{itemize}
+
+\subsection{Chargement et normalisation des signaux}
+
+Le chargement des fichiers audios s'appuie sur la bibliothèque \texttt{librosa}. Le code convertit automatiquement les fichiers stéréo en mono en moyennant les canaux, afin de garantir une cohérence temporelle et fréquentielle pour les différentes méthodes de séparation.
+
+De plus, aucune normalisation n’est appliquée au moment du chargement : la normalisation est effectuée uniquement après reconstruction temporelle, afin de préserver les rapports d’énergie au sein du spectrogramme.
+
+\subsection{Analyse fréquentielle : STFT}
+
+Afin d'analyser les signaux dans le domaine temporel-fréquentiel, nous utilisons la Transformée de Fourier à court terme (STFT) via la fonction librosa.stft. Cette méthode permet de décomposer chaque signal en une représentation complexe, où l'on distingue principalement le spectre d'amplitude et la phase, deux éléments essentiels pour la reconstruction du signal.
+\[
+S(f,t) = |S(f,t)| e^{i\phi(f,t)},
+\]
+où l’on distingue :
+\begin{itemize}
+    \item le module $|S(f,t)|$ (spectre d’amplitude),
+    \item la phase $\phi(f,t)$, essentielle à la reconstruction.
+\end{itemize}
+Toutes les méthodes de séparation développées — filtrage en bande, HPSS, variabilité, masque hybride — opèrent directement sur le spectrogramme complexe $S(f,t)$.
+
+\subsection{Méthodes de séparation implémentées}
+
+Quatre approches principales ont été programmées :
+
+\begin{enumerate}
+    \item \textbf{Filtrage en bande} : sélection des fréquences de la voix (80--4000 Hz).
+    \item \textbf{HPSS} : séparation harmonique/percussive basée sur des filtres médians.
+    \item \textbf{Masque de variabilité} : estimation de la voix en fonction des changements temporels locaux.
+    \item \textbf{Masque hybride} : combinaison pondérée des trois approches précédentes.
+\end{enumerate}
+Chaque méthode génère deux signaux :
+\[
+\hat v(t), \quad \hat i(t),
+\]
+ainsi que les masques fréquentiels associés, sauvegardés sous forme d’images pour analyse.
+
+\subsection{Gestion automatique des chemins et sauvegardes}
+
+Afin que le script puisse être exécuté depuis n’importe quel répertoire, nous avons intégré un système de détection automatique du chemin du fichier Python courant via :
+\[
+\texttt{inspect.getfile(inspect.currentframe())}.
+\]
+Le code reconstruit ensuite l’arborescence :
+\[
+\texttt{src/} \rightarrow \texttt{data/},\; \texttt{results/}.
+\]
+Pour chaque fichier mixé :
+\begin{itemize}
+    \item un sous-dossier dédié est créé dans \texttt{results/},
+    \item les fichiers séparés (voix/instru) y sont enregistrés,
+    \item les masques fréquentiels générés sont également sauvegardés,
+    \item chaque méthode de séparation produit ses propres sorties.
+\end{itemize}
+
+\subsection{Comparaison avec les données de référence}
+
+Lorsque les pistes de référence (\texttt{Vocals/} et \texttt{Instrumentals/}) sont disponibles, le script calcule automatiquement les métriques suivantes via \texttt{mir\_eval} :
+\[
+\text{SDR},\quad \text{SIR},\quad \text{SAR}.
+\]
+Ces mesures sont stockées dans une structure globale permettant ensuite la création :
+\begin{itemize}
+    \item de \textbf{graphes en barres} pour les moyennes,
+    \item de \textbf{boxplots} pour évaluer la dispersion des performances.
+\end{itemize}
+Ce pipeline complet — de la lecture à l'évaluation — permet une comparaison rigoureuse et reproductible des différentes méthodes implémentées.
+
+\chapter{Analyse des résultats}
+
+Dans ce chapitre, nous analysons les performances des différentes méthodes de séparation mises en œuvre dans ce projet. L’objectif est de comprendre non seulement où chaque méthode parvient à isoler la voix et l'instrumental, mais aussi comment elles se comportent dans le domaine fréquentiel.
+
+Nous commençons par une analyse qualitative des masques temps-fréquence produits par chaque algorithme, afin d’observer les régions spectrales attribuées à chaque source et de mettre en évidence leurs forces et limites. Puis, nous procédons à une évaluation quantitative des méthodes à l’aide des métriques SDR, SIR et SAR, largement utilisées dans la littérature, afin de comparer objectivement leurs performances.
+
+Ces analyses qualitatives et quantitatives fournissent une vision complète de l’efficacité des approches selon différents critères.
+
+\section{Analyse des masques temps–fréquence}
+
+Afin de mieux comprendre le comportement réel de chaque méthode de séparation,
+nous avons généré, pour chaque mix, un graphe indiquant la classification
+« voix » ou « instrumental » par fréquence. Chaque figure est construite à partir
+du masque temps–fréquence moyen :
+\[
+\overline{M}(f) = \frac{1}{T}\sum_{t=0}^{T-1} M(f,t),
+\]
+puis binarisé par un seuil de 0.5.  
+En rouge : fréquences classées comme \textit{voix}.  
+En bleu : fréquences classées comme \textit{instrumental}.
+
+Ces visualisations donnent une intuition claire de la façon dont chaque méthode
+filtre le spectre du mix.
+
+\subsection{Masque bande (80--4000 Hz)}
+Cette méthode applique un filtre fréquentiel fixe : toutes les fréquences
+comprises entre 80 et 4000~Hz sont considérées comme appartenant à la voix,
+tandis que les basses et les aigus sont attribuées à l'instrumental.
+
+\begin{itemize}
+    \item les fréquences 80--4000~Hz apparaissent entièrement en rouge ;
+    \item les fréquences situées en dehors de cette bande sont entièrement bleues.
+\end{itemize}
+Ce masque repose uniquement sur une connaissance approximative de la gamme
+vocale humaine. Il est efficace pour isoler les voix présentes dans cette
+bande, mais confond de nombreux instruments harmoniques (guitare, piano, synthés)
+qui occupent la même plage.
+\textbf{Conséquences dans les résultats :}
+\begin{itemize}
+    \item SDR\textsubscript{voice} correct mais limité ;
+    \item SIR modéré, car beaucoup d'instruments se trouvent dans la même bande ;
+    \item peu d'artéfacts, masquage simple \(\Rightarrow\) SAR correct.
+\end{itemize}
+
+\subsection{Masque HPSS (Harmonique / Percussif)}
+HPSS sépare le spectre en deux composantes :
+\[
+S = H + P,
+\]
+où \(H\) est la partie harmonique (stable dans le temps) et \(P\) la partie percussive
+(stable dans la fréquence). Nous utilisons \(H\) pour la voix.
+
+Visuellement :
+\begin{itemize}
+    \item presque toutes les fréquences présentent une dominante « voix » (rouge)
+          lorsqu'elles sont harmoniques ;
+    \item les zones percussives ou transitoires apparaissent en bleu.
+\end{itemize}
+HPSS capture naturellement la structure harmonique de la voix, d’où des résultats
+souvent meilleurs que la méthode par bande.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item SDR\textsubscript{voice} légèrement supérieur ;
+    \item meilleure isolation de la voix (SIR plus élevé) ;
+    \item risque d’artéfacts : la séparation harmonique/percussive est parfois brutale.
+\end{itemize}
+
+\subsection{Masque basé sur la variabilité temporelle}
+Ce masque repose sur la dérivée temporelle locale du module du spectre :
+\[
+V(f,t) = |M(f,t+1) - M(f,t)|.
+\]
+On estime ainsi les fréquences dont l'énergie varie rapidement avec le temps,
+en supposant que la voix porte une forte variabilité (vibrato, attaques de consonnes).
+
+Cependant, pour nos morceaux — dominés par des voix douces et peu modulées — la variabilité détectée est très faible : la quasi-totalité des fréquences apparaît bleue.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item très faible séparation de la voix ;
+    \item SDR\textsubscript{voice} et SIR très bas ;
+    \item méthode peu adaptée à notre dataset.
+\end{itemize}
+
+\subsection{Masque hybride (bande douce + HPSS + variabilité)}
+Le masque hybride combine trois informations :
+\[
+M_{\text{hyb}} = M_{\text{bande}} \;\times\; M_{\text{HPSS}} \;\times\; 
+\left(0.5 + 0.5\,M_{\text{var}}\right).
+\]
+On obtient un masque plus fin, régularisé, qui capture :
+\begin{itemize}
+    \item la connaissance approximative de la voix (bande 80--4000~Hz) ;
+    \item sa nature harmonique (HPSS) ;
+    \item ses variations temporelles (variabilité).
+\end{itemize}
+Le graphe montre une concentration harmonique précise en bas/moyen spectre,
+avec peu d’erreurs de classification.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item meilleure performance globale (meilleur SDR\textsubscript{voice}) ;
+    \item moins d'interférences (bonne SIR) ;
+    \item SAR élevé : peu d’artéfacts.
+\end{itemize}
+
+\subsection{Conclusion visuelle}
+Les graphes confirment ce que les métriques numériques montrent :  
+\begin{itemize}
+    \item la méthode par bande fonctionne mais reste approximative ;
+    \item HPSS apporte un gain grâce à la structure harmonique ;
+    \item la variabilité échoue sur notre dataset ;
+    \item le masque hybride combine les avantages des précédentes
+          et obtient la meilleure séparation globale.
+\end{itemize}
+
+\section{Métriques de référence : SDR, SIR et SAR}
+
+Pour évaluer la qualité d’une méthode de séparation, il est indispensable de comparer le signal estimé 
+à un signal de référence connu. Cette comparaison repose sur une décomposition canonique proposée 
+dans la littérature (Vincent et al., 2006), permettant d’isoler différentes sources d’erreurs.  
+Dans cette section, nous définissons soigneusement chaque grandeur et présentons les trois métriques 
+utilisées : SDR, SIR et SAR.
+
+\subsection{Décomposition du signal estimé}
+
+Soit $s(t)$ un signal de référence (voix ou instrumental) et $\hat{s}(t)$ son estimation produite par une méthode de séparation.
+L’estimation peut être décomposée comme :
+\[
+\hat{s}(t) = s_{\text{cible}}(t) + e_{\text{interf}}(t) + e_{\text{art}}(t).
+\]
+Chaque terme de la décomposition a une interprétation précise :
+\begin{itemize}
+    \item $s_{\text{cible}}(t)$ : \textbf{composante cible}.  
+          Il s’agit de la partie de $\hat{s}(t)$ qui correspond réellement au signal original $s(t)$.  
+          Plus précisément, $s_{\text{cible}}$ est la projection orthogonale de $\hat{s}$ sur l’espace vectoriel engendré par $s$.
+    \item $e_{\text{interf}}(t)$ : \textbf{erreur d'interférence}.  
+          Elle représente la quantité de signal provenant d’autres sources (par exemple instrumental résiduel dans la voix estimée).
+    \item $e_{\text{art}}(t)$ : \textbf{erreur d’artefacts}.  
+          Ce sont les déformations créées par la méthode elle-même : bruit métallique, résonances artificielles, sons « robotiques », etc.
+\end{itemize}
+Ces trois composantes permettent de distinguer :
+\begin{itemize}
+    \item ce qui manque (\(s_{\text{cible}}\)),
+    \item ce qui a fuité depuis d'autres sources (\(e_{\text{interf}}\)),
+    \item ce qui a été inventé par le modèle (\(e_{\text{art}}\)).
+\end{itemize}
+
+\subsection{Signal-to-Distortion Ratio (SDR)}
+
+Le SDR est une mesure \textbf{globale} de la qualité du signal estimé.  
+Il compare l’énergie de la partie correcte à l’énergie totale des erreurs :
+
+\[
+\text{SDR} = 10 \log_{10} 
+\left(
+\frac{\| s_{\text{cible}} \|^2}
+     {\| e_{\text{interf}}(t) + e_{\text{art}}(t) \|^2}
+\right).
+\]
+\textbf{Interprétation des grandeurs :}
+\begin{itemize}
+    \item $\| s_{\text{cible}} \|^2$ : énergie utile réellement extraite (souhaitée).
+    \item $\| e_{\text{interf}} + e_{\text{art}} \|^2$ : énergie des erreurs globales.
+\end{itemize}
+Un \textbf{SDR élevé} signifie que :
+\begin{itemize}
+    \item la source est bien reconstituée,
+    \item les interférences et artefacts sont faibles.
+\end{itemize}
+
+\subsection{Signal-to-Interference Ratio (SIR)}
+
+Le SIR mesure uniquement la capacité d’une méthode à éliminer les autres sources.  
+Il compare ce que la méthode a correctement extrait à ce qu’elle a laissé fuir :
+
+\[
+\text{SIR} = 10 \log_{10}
+\left(
+\frac{\| s_{\text{cible}} \|^2}
+     {\| e_{\text{interf}} \|^2}
+\right).
+\]
+\textbf{Interprétation :}
+\begin{itemize}
+    \item $\| s_{\text{cible}} \|^2$ : partie correctement extraite de la source d'intérêt.
+    \item $\| e_{\text{interf}} \|^2$ : quantité de l'autre source encore présente dans l'estimation.
+\end{itemize}
+Un \textbf{SIR élevé} signifie que la méthode sépare bien les sources (peu de contamination instrumentale dans la voix, et inversement).
+
+\subsection{Signal-to-Artifacts Ratio (SAR)}
+
+Le SAR quantifie la propreté du signal estimé, c’est-à-dire le niveau de distorsions créées par la méthode :
+
+\[
+\text{SAR} = 10 \log_{10}
+\left(
+    \frac{
+        \left\| s_{\text{cible}} + e_{\text{interf}} \right\|^{2}
+    }{
+        \left\| e_{\text{art}} \right\|^{2}
+    }
+\right).
+\]
+\textbf{Interprétation :}
+\begin{itemize}
+    \item $\| s_{\text{cible}} + e_{\text{interf}} \|^2$ : tout ce qui n'est pas un artefact (même si incorrect).
+    \item $\| e_{\text{art}} \|^2$ : énergie des déformations artificielles.
+\end{itemize}
+Un \textbf{SAR élevé} signifie que la méthode ne détruit pas le signal :
+pas d’effet métallique, pas de bruit robotique, pas de tremblements artificiels.
+
+\subsection{Rôle complémentaire des trois métriques}
+
+Les trois ratios mesurent des aspects différents :
+
+\begin{itemize}
+    \item Le SDR évalue la \textbf{performance globale}.
+    \item Le SIR mesure la \textbf{qualité de séparation} (interférences).
+    \item Le SAR mesure la \textbf{qualité perceptuelle} (artefacts).
+\end{itemize}
+Ainsi :
+\begin{itemize}
+    \item Une méthode peut avoir un excellent SIR mais un mauvais SAR  
+          (bonne séparation mais effets audio très dégradés).
+    \item Une méthode peut avoir un bon SAR mais un SIR faible  
+          (signal propre mais séparation inefficace).
+\end{itemize}
+Cette complémentarité est essentielle pour interpréter correctement les résultats expérimentaux.
+
+
+\section{Analyse des résultats expérimentaux}
+
+Dans ce chapitre, nous présentons et analysons les performances obtenues par les différentes 
+méthodes de séparation implémentées : 
+\emph{filtre de bande}, \emph{HPSS}, \emph{masque par variabilité temporelle} et \emph{masque hybride}.  
+Les résultats reposent sur les métriques SDR, SIR et SAR calculées automatiquement sur l’ensemble des mixes.
+
+Afin d’assurer une lisibilité optimale, chaque sous-section est accompagnée d’une figure unique, 
+suivie d’un commentaire détaillé.
+
+\subsection{Analyse du SDR (voix)}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=13cm]{figures/box_SDR_voice.png}
+    \caption{Distribution du SDR pour la piste voix selon les méthodes.}
+\end{figure}
+
+Le \textbf{SDR voix} reflète la capacité globale d’une méthode à reconstruire la voix en minimisant distorsions,
+interférences et artefacts.  
+L'analyse du graphique montre clairement que :
+
+\begin{itemize}
+    \item Le \textbf{masque hybride} est la méthode la plus robuste, avec un SDR médian proche de \textbf{9 dB}.  
+          Il tire parti de la complémentarité entre filtrage fréquentiel, HPSS et variabilité temporelle.
+    \item Les méthodes \textbf{bande} et \textbf{HPSS} obtiennent des performances intermédiaires
+          (environ 6--7 dB), cohérentes avec leur nature plus simple.
+    \item Le \textbf{masque par variabilité} est le moins performant (1--2 dB), car il attribue trop agressivement
+          les fluctuations rapides à la voix, entraînant une forte perte d'information utile.
+\end{itemize}
+
+Ce premier résultat montre que la combinaison de plusieurs indices spectro-temporels est bien plus efficace
+qu'un critère unique.
+
+\subsection{Analyse du SDR (instrumental)}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=13cm]{figures/bar_SDR_instr.png}
+    \caption{SDR moyen pour la piste instrumentale.}
+\end{figure}
+
+La séparation de l’instrumental est en général plus difficile, car la voix et l’instrumental 
+partagent souvent des composantes fréquentielles proches.  
+Dans notre cas, les valeurs de SDR\(_{\text{instr}}\) sont globalement négatives, ce qui est courant 
+dans les mélanges très dominés par la voix.
+
+On observe néanmoins que :
+
+\begin{itemize}
+    \item Les méthodes \textbf{bande} et \textbf{hybride} obtiennent les résultats les moins mauvais 
+          (environ -8 à -9.5 dB).  
+    \item La méthode \textbf{HPSS} n’apporte pas d’amélioration significative face au simple filtrage fréquentiel.
+    \item Le \textbf{masque variabilité} donne les scores les plus faibles, car il transfère une grande partie
+          de l’énergie à la voix.
+\end{itemize}
+
+Cette métrique confirme que l'instrumental est la composante la plus difficile à isoler dans notre dataset.
+
+\clearpage
+\subsection{Analyse du SIR (voix)}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=13cm]{figures/bar_SIR_voice.png}
+    \caption{SIR moyen pour la piste voix.}
+\end{figure}
+
+Le \textbf{SIR} mesure le niveau de contamination de la voix par l’instrumental restant.  
+Ici, les résultats sont particulièrement intéressants :
+
+\begin{itemize}
+    \item Le \textbf{masque variabilité} obtient paradoxalement le meilleur SIR, avec des valeurs proches de 24 dB :
+          il supprime presque totalement l’instrumental.
+    \item Cependant, ce bon SIR se fait au prix d’une \textbf{dégradation massive du signal vocal}
+          (kurtosis artificielle, trous spectro-temporels), ce qui explique son faible SDR et SAR.
+    \item Le \textbf{masque hybride}, bien que moins agressif (\(\approx\) 12 dB), parvient à conserver une voix propre
+          tout en préservant sa structure harmonique.
+\end{itemize}
+Ce résultat illustre parfaitement que le SIR ne suffit pas pour évaluer la qualité perceptuelle d’une séparation.
+
+\clearpage
+\subsection{Analyse du SAR (voix)}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=13cm]{figures/bar_SAR_voice.png}
+    \caption{SAR moyen pour la piste voix.}
+\end{figure}
+
+Le \textbf{SAR} quantifie la quantité d’artefacts générés par la méthode.  
+Les résultats sont ici très discriminants :
+
+\begin{itemize}
+    \item La \textbf{méthode hybride} domine largement (env 13--14 dB), produisant les voix les plus naturelles.
+    \item Les méthodes \textbf{bande} et \textbf{HPSS} obtiennent des valeurs intermédiaires (env 7.5 dB),
+          indiquant une certaine rugosité mais une dégradation modérée.
+    \item Le \textbf{masque variabilité} présente un SAR extrêmement faible (env 1.5 dB), confirmant la présence
+          d’artefacts massifs (distorsions, discontinuités temporelles, trous fréquentiels).
+\end{itemize}
+
+Cette dernière analyse confirme que seule la méthode hybride fournit un équilibre satisfaisant entre
+pureté du signal et absence d’artefacts.
+
+\newpage
+
+\section{Conclusion de l’analyse}
+
+La comparaison quantitative des méthodes révèle des comportements très différents :
+
+\begin{itemize}
+    \item \textbf{Le filtrage simple par bande} fournit des résultats cohérents mais limités.
+    \item \textbf{La méthode HPSS} isole correctement certaines structures harmoniques mais souffre en présence de voix peu tonales.
+    \item \textbf{La variabilité temporelle} élimine efficacement l’instrumental (bon SIR) mais au prix d’artefacts massifs (mauvais SAR).
+    \item \textbf{Le masque hybride} combine les avantages des trois précédentes et se distingue 
+          comme la meilleure approche, obtenant les meilleurs scores pour le SDR et le SAR.
+\end{itemize}
+Ainsi, d’un point de vue qualitatif comme quantitatif, \textbf{le masque hybride apparaît comme la méthode la plus fiable et la plus équilibrée pour la séparation voix / instrumental dans notre pipeline Python.}
+
+\chapter*{Conclusion}
+
+Ce projet a permis d’aborder concrètement la séparation de sources audio, en particulier la séparation de la voix et de l'instrumental, à partir d'un mix unique. Nous avons utilisé un cadre théorique basé sur la transformée de Fourier discrète, la STFT et les masques temps-fréquence, implémentés en Python. La méthodologie inclut la préparation d’un dataset audio, l’analyse fréquentielle, l’implémentation de méthodes classiques de séparation (filtrage, HPSS, masques temps-fréquence), ainsi qu’une évaluation des performances via les métriques SDR, SIR, et SAR.
+
+Les résultats expérimentaux montrent que le filtrage en bande et la méthode HPSS, combinés à des masques temps-fréquence, offrent de bons compromis pour la séparation. En outre, les méthodes classiques, bien qu’efficaces, restent limitées face à la complexité des signaux réels.
+
+Le projet présente plusieurs limites : le dataset est restreint et simplifié, les hyperparamètres n'ont pas été explorés systématiquement, et certaines méthodes n'ont pas été comparées avec celles de l'IA moderne. Ces limites ouvrent plusieurs perspectives, telles que l'extension du dataset, l’optimisation des hyperparamètres, la comparaison avec des modèles d’IA (comme Demucs ou Spleeter), et l'intégration dans une application interactive pour une utilisation pratique.
+
+En conclusion, ce projet a rempli son objectif pédagogique en nous permettant de lier théorie et application pratique tout en développant une compréhension des méthodes de séparation audio, avec un focus sur les performances des approches classiques par rapport aux modèles modernes de deep learning.
+
+\begin{thebibliography}{99}
+
+
+
+\bibitem{numpy}
+Harris, C. R., Millman, K. J., van der Walt, S. J., et al.  
+\newblock \emph{Array programming with NumPy}.  
+\newblock Nature, 585, 357–362, 2020.  
+\newblock Documentation : \url{https://numpy.org/doc/}
+
+\bibitem{scipy}
+Virtanen, P., Gommers, R., Oliphant, T. E., et al.  
+\newblock \emph{SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python}.  
+\newblock Nature Methods, 17, 261–272, 2020.  
+\newblock Documentation : \url{https://docs.scipy.org/doc/scipy/}
+
+\bibitem{matplotlib}
+Hunter, J. D.  
+\newblock \emph{Matplotlib: A 2D Graphics Environment}.  
+\newblock Computing in Science \& Engineering, 9(3), 90–95, 2007.  
+\newblock Documentation : \url{https://matplotlib.org/stable/}
+
+\bibitem{librosa}
+McFee, B., Raffel, C., Liang, D., et al.  
+\newblock \emph{librosa: Audio and Music Signal Analysis in Python}.  
+\newblock In Proceedings of the 14th Python in Science Conference (SciPy), 2015.  
+\newblock Documentation : \url{https://librosa.org/doc/latest/}
+
+\bibitem{mir_eval}
+Raffel, C., McFee, B., Humphrey, E. J., et al.  
+\newblock \emph{mir\_eval: A Transparent Implementation of Common MIR Metrics}.  
+\newblock In Proceedings of the 15th International Society for Music Information Retrieval Conference (ISMIR), 2014.  
+\newblock Documentation : \url{https://craffel.github.io/mir\_eval/}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 2. Concepts théoriques
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bibitem{oppenheim}
+Oppenheim, A. V., Schafer, R. W.  
+\newblock \emph{Discrete-Time Signal Processing}.  
+\newblock Prentice Hall, 3\textsuperscript{e} édition, 2009.
+
+\bibitem{fourier}
+Bracewell, R. N.  
+\newblock \emph{The Fourier Transform and Its Applications}.  
+\newblock McGraw–Hill, 3\textsuperscript{e} édition, 1999.
+
+\bibitem{stft}
+Allen, J. B., Rabiner, L. R.  
+\newblock \emph{A Unified Approach to Short-Time Fourier Analysis and Synthesis}.  
+\newblock Proceedings of the IEEE, 65(11), 1558–1564, 1977.
+
+\bibitem{hpss}
+Fitzgerald, D.  
+\newblock \emph{Harmonic/Percussive Separation Using Median Filtering}.  
+\newblock 13th International Conference on Digital Audio Effects (DAFx-10), 2010.
+
+\bibitem{bss_eval}
+Vincent, E., Gribonval, R., Févotte, C.  
+\newblock \emph{Performance Measurement in Blind Audio Source Separation}.  
+\newblock IEEE Transactions on Audio, Speech, and Language Processing, 14(4), 1462–1469, 2006.
+
+\bibitem{siseq}
+Liutkus, A., Stöter, F.-R., Rafii, Z., et al.  
+\newblock \emph{The 2016 Signal Separation Evaluation Campaign}.  
+\newblock In Proceedings of the 13th International Conference on Latent Variable Analysis and Signal Separation (LVA/ICA), 2017.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 3. Séparation de sources / audio
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bibitem{vincent_bss_book}
+Vincent, E., Plumbley, M. D., Ellis, D. P. W. (eds.)  
+\newblock \emph{Source Separation and Machine Learning}.  
+\newblock Springer, 2018.
+
+\bibitem{benetos}
+Benetos, E., Dixon, S., Giannoulis, D., Kirchhoff, H., Klapuri, A.  
+\newblock \emph{Automatic Music Transcription: Challenges and Future Directions}.  
+\newblock Journal of Intelligent Information Systems, 41, 407–434, 2013. 
+
+\end{thebibliography}
+
+\end{document}
