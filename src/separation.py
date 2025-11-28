@@ -9,7 +9,7 @@ import soundfile as sf
 import matplotlib.pyplot as plt
 
 # imports métriques
-from museval.metrics import bss_eval_sources
+from mir_eval.separation import bss_eval_sources
 
 # === Imports Demucs (commentés pour l’instant) ===
 # import torch
@@ -73,7 +73,7 @@ def band_masks(sr, n_fft, f_low=80, f_high=4000):
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     voice_band = (freqs >= f_low) & (freqs <= f_high)
 
-    M_voice = voice_band[:, None].astype(float)  # (freq, 1) → broadcast sur le temps
+    M_voice = voice_band[:, None].astype(float)  # (freqs, 1) → broadcast sur le temps
     M_instr = 1.0 - M_voice
     return M_voice, M_instr
 
@@ -426,7 +426,7 @@ def evaluate_method(voice_est, instr_est, voice_ref, instr_ref):
     voice_ref  = voice_ref[:min_len]
     instr_ref  = instr_ref[:min_len]
 
-    # museval attend (nsrc, nsamples)
+    # mir_eval attend (nsrc, nsamples)
     ref = np.vstack([voice_ref, instr_ref])
     est = np.vstack([voice_est, instr_est])
 
@@ -455,12 +455,30 @@ for wav_path in wav_paths:
     base = os.path.splitext(os.path.basename(wav_path))[0]
     print(f"\n=== Evaluation pour : {base} ===")
 
-    # chemins des pistes de référence
-    ref_vocals_path = os.path.join(VOCALS_DIR, base + ".wav")
-    ref_instr_path  = os.path.join(INSTR_DIR,  base + ".wav")
+    # On s'attend à un nom du type :
+    #   mix_{vocal_base}_{instr_base}
+    if not base.startswith("mix_"):
+        print("  -> Nom de mix inattendu, on le skip :", base)
+        continue
+
+    # On enlève le préfixe "mix_"
+    mix_name = base[4:]  # enlève "mix_"
+
+    # On découpe sur le DERNIER "_" (au cas où il y en aurait d'autres avant)
+    try:
+        vocal_base, instr_base = mix_name.rsplit("_", 1)
+    except ValueError:
+        print("  -> Impossible de découper en (vocals, instru), nom inattendu :", mix_name)
+        continue
+
+    ref_vocals_path = os.path.join(VOCALS_DIR, vocal_base + ".wav")
+    ref_instr_path  = os.path.join(INSTR_DIR,  instr_base + ".wav")
 
     if not (os.path.exists(ref_vocals_path) and os.path.exists(ref_instr_path)):
-        print("  -> Références manquantes (Vocals/Instrumentals) : skip.")
+        print("  -> Références manquantes :")
+        print("     vocals :", ref_vocals_path)
+        print("     instru :", ref_instr_path)
+        print("     -> skip.")
         continue
 
     # chargement des références (mono, pas de normalisation)
@@ -522,31 +540,35 @@ methods_present = [
     if len(global_results[m]["SDR_voice"]) > 0
 ]
 
-# Barplots des moyennes
-for metric in METRICS:
-    values_mean = [
-        np.mean(global_results[m][metric])
-        for m in methods_present
-    ]
+if len(methods_present) == 0:
+    print("\nAucun résultat de métriques disponible, impossible de tracer les graphes globaux.")
+else:
+    # Barplots des moyennes
+    for metric in METRICS:
+        values_mean = [
+            np.mean(global_results[m][metric])
+            for m in methods_present
+        ]
 
+        plt.figure(figsize=(6, 4))
+        plt.bar(methods_present, values_mean)
+        plt.ylabel(metric + " (dB)")
+        plt.title(f"{metric} moyen par méthode")
+        plt.tight_layout()
+        out_path = os.path.join(fig_dir, f"bar_{metric}.png")
+        plt.savefig(out_path)
+        plt.close()
+        print(f"  -> Graphique sauvegardé : {out_path}")
+
+    # Boxplot SDR voix
     plt.figure(figsize=(6, 4))
-    plt.bar(methods_present, values_mean)
-    plt.ylabel(metric + " (dB)")
-    plt.title(f"{metric} moyen par méthode")
+    data_sdr_voice = [global_results[m]["SDR_voice"] for m in methods_present]
+    # correction du warning : tick_labels au lieu de labels
+    plt.boxplot(data_sdr_voice, tick_labels=methods_present)
+    plt.ylabel("SDR_voice (dB)")
+    plt.title("Distribution du SDR voix par méthode")
     plt.tight_layout()
-    out_path = os.path.join(fig_dir, f"bar_{metric}.png")
+    out_path = os.path.join(fig_dir, "box_SDR_voice.png")
     plt.savefig(out_path)
     plt.close()
     print(f"  -> Graphique sauvegardé : {out_path}")
-
-# Boxplot SDR voix
-plt.figure(figsize=(6, 4))
-data_sdr_voice = [global_results[m]["SDR_voice"] for m in methods_present]
-plt.boxplot(data_sdr_voice, labels=methods_present)
-plt.ylabel("SDR_voice (dB)")
-plt.title("Distribution du SDR voix par méthode")
-plt.tight_layout()
-out_path = os.path.join(fig_dir, "box_SDR_voice.png")
-plt.savefig(out_path)
-plt.close()
-print(f"  -> Graphique sauvegardé : {out_path}")
