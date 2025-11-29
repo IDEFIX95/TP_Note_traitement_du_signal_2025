@@ -1,24 +1,29 @@
-# TP_Note_traitement_du_signal_202
-# 🎧 Projet – Traitement du signal audio (Mixage, FFT, Filtrage, IFFT)
+# 🎧 Projet — Séparation Voix / Instrumental 
 
 Projet académique **CY Tech — Traitement du signal**  
-Développé en **Python**
+Développé en **Python (NumPy, SciPy, Librosa, Matplotlib, mir_eval)**
 
-L’objectif du projet est d’illustrer les opérations classiques du traitement du signal audio : séparation d’un morceau en deux pistes **(voix et instrumental)**, analyse fréquentielle **(FFT)**, **filtrage** de certaines fréquences, puis **reconstruction** finale via l’**IFFT** et un **mixage contrôlé**.
+Réalisé par : Rayane Manseur Rayan Hussein Emine Ould Agatt Florian Vo Romain Bowé Clément Rimbeuf Anthusan Srikaran
 
-On part d’une musique, on l’analyse, on la transforme et on tente de reconstruire un signal audio cohérent à partir des composantes modifiées.
+L’**objectif** du projet est de séparer un morceau audio en deux composantes :
+la **voix** et l’**instrumental**, en utilisant des méthodes classiques du traitement du signal :
+**STFT, masques temps–fréquence, filtrage fréquentiel, HPSS, variation temporelle, reconstruction, et évaluation quantitative (SDR, SIR, SAR).**
+
+Ce pipeline complet permet d’aller depuis les données brutes, jusqu’à la reconstruction et l’analyse comparative des méthodes.
 
 ---
 
 ## 🎯 Objectifs du projet
 
-Ce projet illustre plusieurs opérations de **traitement du signal audio** en Python :
+Ce projet illustre plusieurs opérations de **traitement du signal audio** :
 
-1. Lecture et préparation de fichiers audio (`.wav`)
-2. Création de **mixes** à partir de pistes vocales et instrumentales
-3. Analyse fréquentielle (**FFT**)
-4. Filtrage passe-bas
-5. Reconstruction du signal dans le domaine temporel (**IFFT**)
+1. Comprendre et appliquer les bases du **traitement du signal audio**.
+2. Manipuler la **DFT / FFT, STFT**, **masques fréquences / temps**.
+3. Implémenter plusieurs méthodes de **séparation de sources**.
+4. Générer un dataset contrôlé (mélanges voix + instrumental).
+5. Reconstruire des signaux via **ISTFT**.
+6. Évaluer les méthodes via les métriques standard (**SDR, SIR, SAR**).
+7. Visualiser les masques et les résultats
 
 
 ---
@@ -26,14 +31,29 @@ Ce projet illustre plusieurs opérations de **traitement du signal audio** en Py
 
 ```text
 .
-├── Mix.py        # Lecture des WAV, normalisation, génération de mixes
-├── FFT.py        # Calcul et affichage du spectre (FFT)
-├── Filter.py     # Filtre passe-bas + affichage signal filtré
-├── IFFT.py       # Reconstruction du signal par IFFT
-└── Dataset/
-    ├── Vocals/          # Pistes vocales (.wav)
-    ├── Instrumentals/   # Pistes instrumentales (.wav)
-    └── Mixes/           # Dossier de sortie pour les mixes générés
+├── src/
+│   ├── mix.py                # Génération automatique des mixes
+│   ├── separation.py         # Implémentation des 4 méthodes de séparation
+│   ├── stft_utils.py         # Fonctions STFT / ISTFT / normalisation
+│   ├── metrics.py            # Calcul des métriques SDR / SIR / SAR
+│   ├── plots.py              # Affichage des masques et signaux
+│   └── main.py               # Pipeline principal (lecture → séparation → save → metrics)
+│
+├── data/
+│   ├── Vocals/               # Pistes vocales de référence
+│   ├── Instrumentals/        # Pistes instrumentales de référence
+│   └── Mixes/                # Mixes générés automatiquement
+│
+└── results/
+    ├── <nom_du_mix>/
+    │   ├── vocals_est.wav
+    │   ├── instru_est.wav
+    │   ├── mask_bande.png
+    │   ├── mask_hpss.png
+    │   ├── mask_variability.png
+    │   └── mask_hybride.png
+    └── metrics_globales.csv
+
 ```
 
 ---
@@ -45,133 +65,127 @@ Ce projet illustre plusieurs opérations de **traitement du signal audio** en Py
     - `numpy`
     - `scipy`
     - `matplotlib`
+    - `librosa`
+    - `mir_eval`
 
 Installation des dépendances (par exemple) :
 ```bash
-pip install numpy scipy matplotlib
+pip install numpy scipy matplotlib librosa mir_eval
 ```
 ---
 
-## 🚀 Utilisation 
-###1️⃣ Générer des mixes audio (`Mix.py`)
+## 🚀 Pipeline complet
+###1️⃣ Génération automatique des mixes (`mix.py`)
 
-Ce module :
+Ce script :
 
-- lit les fichiers `.wav` dans `Dataset/Vocals` et `Dataset/Instrumentals`
-
-- convertit les signaux en **mono** et les **normalise** entre -1 et 1
-
-- crée des mixes pondérés (par défaut : 0.7 pour la voix, 0.3 pour l’instrumental)
-
-- renormalise le mix final
-
-- sauvegarde les fichiers dans `Dataset/Mixes` sous la forme :
-`mix_<nom_vocal>_<nom_instru>.wav`
+- charge la piste vocale et instrumentale
+- convertit en mono si nécessaire
+- normalise chaque signal
+- applique un mix linéaire :
+      `mix = α·voix + β·instrumental`
+- sauvegarde le mix dans `data/mix`
 
 Pour lancer la génération de tous les mixes :
 ```bash
-python Mix.py
-```
-🟢 **Résultats** :
-Les fichiers `.wav` générés se trouvent dans :
-```bash
-Dataset/Mixes/
+python src/mix.py
 ```
 
 ---
 
-## 2️⃣ Analyse fréquentielle – FFT (`FFT.py`)
+###2️⃣ Analyse temps–fréquence via STFT
 
-Ce module propose :
+Nous utilisons :
 
-- une fonction `compute_fft(signal, sampling_rate)` qui :
+- `librosa.stft` pour obtenir le spectrogramme complexe
+- module
+  `S(f,t) = |S(f,t)| e^{iϕ(f,t)}`
 
-    - calcule la FFT du signal
+Toutes les méthodes de séparation travaillent sur le spectrogramme, jamais sur le signal temps direct.
 
-    - retourne les **fréquences** et les **magnitudes** normalisées
+---
 
-- une fonction `plot_signal_and_spectrum(t, signal, fft_frequencies, fft_magnitudes)` qui :
+###3️⃣ Méthodes de séparation (`separation.py`)
 
-    - affiche le signal dans le domaine temporel
+Nous avons implémenté 4 méthodes :
 
-    - affiche le spectre de magnitude dans le domaine fréquentiel
+- Filtre en bande (80–4000 Hz) : simple filtre fréquentiel basé sur la gamme vocale.
 
-Exemple (mode script, si tu complètes la génération du signal dans le `main`) :
+- HPSS (Harmonic / Percussive Source Separation) : séparation par filtres médians :
+        - composante harmonique → voix
+        - composante percussive → instrumental
 
-```bash
-python FFT.py
-```
+- Masque par variabilité temporelle : analyse des variations rapides du module du spectre.
 
-🟢 **Résultats** :
-Les graphiques s’affichent dans une fenêtre `matplotlib` (non sauvegardés par défaut).
+- Masque hybride (méthode finale) : combinaison pondérée des 3 précédentes. **Meilleure méthode selon notre étude.**
+
+Chaque méthode génère :
+- `vocals_est.wav`
+- `instru_est.wav`
+
+Ainsi que les masques (png), sauvegardés via `Vizualitation.py`.
+
+---
+
+###4️⃣ Reconstruction temporelle (`src/other/IFFT.py`)
+
+- ISTFT via librosa.istft
+- Tests de cohérence sur signaux simples
+
+Dans le pipeline réel, la reconstruction est déclenchée depuis `separation.py`.
 
 
 ---
 
-## 3️⃣ Filtrage passe-bas (`Filter.py`)
+###5️⃣ Visualisation (`src/other/Vizualitation.py`)
 
-Ce module permet :
+Génère automatiquement :
 
-- de définir un filtre passe-bas de Butterworth avec `butter_lowpass(cutoff, fs, order)`
-
-- d’appliquer ce filtre à un signal avec `lowpass_filter(data, cutoff, fs, order)`
-
-- de tracer le signal original et le signal filtré avec `plot_signals(original_signal, filtered_signal, t)`
-
-En mode script (une fois l’indentation du `if __name__ == "__main__":` corrigée si besoin), le fichier :
-
-- crée un signal de test composé de plusieurs sinusoïdes (5, 50, 120 Hz)
-
-- applique un filtre passe-bas (par ex. coupure à 50 Hz)
-
-- affiche les signaux avant / après filtrage
-
-Pour lancer l’exemple :
-
-```bash
-python Filter.py
-```
-🟢 **Résultats** :
-Deux graphiques `matplotlib` s’affichent :
-
-1. Signal original
-2. Signal filtré (basses fréquences conservées)
+- spectrogrammes
+- masques de séparation (voix/instru)
+- courbes temporelles
 
 ---
 
-## 4️⃣ Reconstruction temporelle – IFFT (`IFFT.py`)
+###6️⃣ Évaluation SDR / SIR / SAR
 
-Ce module contient :
+Dans `separation.py` :
 
-- `compute_ifft(fft_values)` : reconstruit un signal temporel à partir de ses valeurs FFT (et renvoie la partie réelle)
+- compare chaque source estimée aux sources réelles
+- utilise `mir_eval.separation.bss_eval_sources`
+- génère un CSV global de résultats :
 
-- `plot_time_signal(t, time_signal)` : affiche le signal reconstruit dans le domaine temporel
-
-En mode script, le fichier :
-
-- génère un signal test (somme de sinusoïdes)
-
-- calcule sa FFT
-
-- applique l’IFFT
-
-- affiche le signal reconstruit
-
-Pour lancer l’exemple :
 ```bash
-python IFFT.py
+results_metrics.csv
 ```
+---
 
-🟢 **Résultats** :
-Un graphique `matplotlib` affiche le signal temporel reconstruit.
+###📊 Résultats (résumé du rapport)
+
+- **Hybride** = meilleure méthode (SDR ≈ 9 dB)
+
+- **HPSS** = bon compromis
+
+- **Filtre bande** = simple mais limité
+
+- **Variabilité** = meilleur SIR mais détruit le signal → mauvais SDR/SAR
 
 ---
 
-## 📦 Sorties du projet
+##▶️ Exécution du pipeline complet
 
-| Module | Résultat produit |
-|--------|------------------|
-| `Mix.py` | Fichiers audio recomposés (`Dataset/Reconstructed/`) |
-| `FFT.py` | Graphiques temporel + spectre (matplotlib) |
-| `Filter.py` | Signals filtrés + visualisation |
-| `IFFT.py` | Signal reconstruit en domaine temporel |
+```bash
+python src/separation.py
+```
+
+Ce script :
+
+- charge les mixes
+
+- applique les 4 méthodes
+
+- reconstruit les sources
+
+- génère les masques + figures
+
+- calcule les métriques
