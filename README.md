@@ -135,7 +135,7 @@ Dans le pipeline réel, la reconstruction est déclenchée depuis `separation.py
 
 ---
 
-5️⃣ Visualisation (`src/other/Vizualitation.py`)
+### 5️⃣ Visualisation (`src/other/Vizualitation.py`)
 
 Génère automatiquement :
 
@@ -158,7 +158,7 @@ results_metrics.csv
 ```
 ---
 
-###📊 Résultats (résumé du rapport)
+## 📊 Résultats (résumé du rapport)
 
 - **Hybride** = meilleure méthode (SDR ≈ 9 dB).
 
@@ -170,7 +170,7 @@ results_metrics.csv
 
 ---
 
-##▶️ Exécution du pipeline complet
+## ▶️ Exécution du pipeline complet
 
 ```bash
 python src/separation.py
