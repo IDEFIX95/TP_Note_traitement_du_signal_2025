@@ -30,7 +30,7 @@ Ce projet illustre plusieurs opérations de **traitement du signal audio** :
 ## 📁 Structure du projet
 
 ```text
-TP_NOTE_TRAITEMENT_DU_SIGNAL_202/
+TP_NOTE_TRAITEMENT_DU_SIGNAL_2025/
 │
 ├── data/
 │   ├── Instrumentals/     # Pistes instrumentales originales
