@@ -77,12 +77,12 @@ pip install numpy scipy matplotlib librosa mir_eval
 
 Ce script :
 
-- charge la piste vocale et instrumentale `data/Vocals/` et `data/Instrumentals/`
-- convertit en mono si nécessaire
-- normalise chaque signal
-- applique un mix linéaire :
+- Charge la piste vocale et instrumentale `data/Vocals/` et `data/Instrumentals/`.
+- Convertit en mono si nécessaire.
+- Normalise chaque signal.
+- Applique un mix linéaire :
       `mix = α·voix + β·instrumental`
-- sauvegarde le mix dans `data/mix`
+- Sauvegarde le mix dans `data/mix`
 
 Pour lancer la génération de tous les mixes :
 ```bash
@@ -95,27 +95,27 @@ python src/mix.py
 
 Nous utilisons :
 
-- `librosa.stft` pour obtenir le spectrogramme complexe
-- module
+- `librosa.stft` pour obtenir le spectrogramme complexe.
+- Module :
   `S(f,t) = |S(f,t)| e^{iϕ(f,t)}`
 
 Toutes les méthodes de séparation travaillent sur le spectrogramme, jamais sur le signal temps direct.
 
 ---
 
-3️⃣ Méthodes de séparation (`separation.py`)
+3️⃣ Méthodes de séparation (`src/separation.py`)
 
 Nous avons implémenté 4 méthodes :
 
 - Filtre en bande (80–4000 Hz) : simple filtre fréquentiel basé sur la gamme vocale.
 
 - HPSS (Harmonic / Percussive Source Separation) : séparation par filtres médians :
-        - composante harmonique → voix
-        - composante percussive → instrumental
+        - Composante harmonique → voix.
+        - Composante percussive → instrumental.
 
 - Masque par variabilité temporelle : analyse des variations rapides du module du spectre.
 
-- Masque hybride (méthode finale) : combinaison pondérée des 3 précédentes. **Meilleure méthode selon notre étude.**
+- Masque hybride (méthode finale) : combinaison pondérée des 3 précédentes. **Meilleure méthode selon notre étude.**.
 
 Chaque méthode produit deux fichiers WAV:
 - `vocals_est.wav`
@@ -139,9 +139,9 @@ Dans le pipeline réel, la reconstruction est déclenchée depuis `separation.py
 
 Génère automatiquement :
 
-- spectrogrammes
-- masques de séparation (voix/instru)
-- courbes temporelles
+- Spectrogrammes.
+- Masques de séparation (voix/instru).
+- Courbes temporelles.
 
 ---
 
@@ -149,9 +149,9 @@ Génère automatiquement :
 
 Dans `separation.py` :
 
-- compare chaque source estimée aux sources réelles
-- utilise `mir_eval.separation.bss_eval_sources`
-- génère un CSV global de résultats :
+- Compare chaque source estimée aux sources réelles.
+- Utilise `mir_eval.separation.bss_eval_sources`.
+- Génère un CSV global de résultats :
 
 ```bash
 results_metrics.csv
@@ -160,13 +160,13 @@ results_metrics.csv
 
 ###📊 Résultats (résumé du rapport)
 
-- **Hybride** = meilleure méthode (SDR ≈ 9 dB)
+- **Hybride** = meilleure méthode (SDR ≈ 9 dB).
 
-- **HPSS** = bon compromis
+- **HPSS** = bon compromis.
 
-- **Filtre bande** = simple mais limité
+- **Filtre bande** = simple mais limité.
 
-- **Variabilité** = meilleur SIR mais détruit le signal → mauvais SDR/SAR
+- **Variabilité** = meilleur SIR mais détruit le signal → mauvais SDR/SAR.
 
 ---
 
@@ -178,12 +178,12 @@ python src/separation.py
 
 Ce script :
 
-- charge les mixes
+- Charge les mixes.
 
-- applique les 4 méthodes
+- Applique les 4 méthodes.
 
-- reconstruit les sources
+- Reconstruit les sources.
 
-- génère les masques + figures
+- Génère les masques + figures.
 
-- calcule les métriques
+- Calcule les métriques.
