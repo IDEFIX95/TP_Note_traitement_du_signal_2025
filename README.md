@@ -135,7 +135,7 @@ Dans le pipeline réel, la reconstruction est déclenchée depuis `separation.py
 
 ---
 
-### 5️⃣ Visualisation (`src/other/Vizualitation.py`)
+5️⃣ Visualisation (`src/other/Vizualitation.py`)
 
 Génère automatiquement :
 
