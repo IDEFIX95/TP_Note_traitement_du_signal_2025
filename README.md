@@ -30,29 +30,27 @@ Ce projet illustre plusieurs opérations de **traitement du signal audio** :
 ## 📁 Structure du projet
 
 ```text
-.
-├── src/
-│   ├── mix.py                # Génération automatique des mixes
-│   ├── separation.py         # Implémentation des 4 méthodes de séparation
-│   ├── stft_utils.py         # Fonctions STFT / ISTFT / normalisation
-│   ├── metrics.py            # Calcul des métriques SDR / SIR / SAR
-│   ├── plots.py              # Affichage des masques et signaux
-│   └── main.py               # Pipeline principal (lecture → séparation → save → metrics)
+TP_NOTE_TRAITEMENT_DU_SIGNAL_202/
 │
 ├── data/
-│   ├── Vocals/               # Pistes vocales de référence
-│   ├── Instrumentals/        # Pistes instrumentales de référence
-│   └── Mixes/                # Mixes générés automatiquement
+│   ├── Instrumentals/     # Pistes instrumentales originales
+│   ├── Vocals/            # Pistes vocales originales
+│   ├── mix/               # Mélanges générés automatiquement
+│   └── Other/             # Signaux de test / bruit / données auxiliaires
 │
-└── results/
-    ├── <nom_du_mix>/
-    │   ├── vocals_est.wav
-    │   ├── instru_est.wav
-    │   ├── mask_bande.png
-    │   ├── mask_hpss.png
-    │   ├── mask_variability.png
-    │   └── mask_hybride.png
-    └── metrics_globales.csv
+├── src/
+│   ├── mix.py             # Génération des mixes (voix + instrumental)
+│   ├── separation.py      # Implémentation des 4 méthodes de séparation
+│   │
+│   └── other/
+│       ├── FFT.py         # Analyse fréquentielle (FFT)
+│       ├── Filter.py      # Filtre passe-bas / tests sur signaux simples
+│       ├── IFFT.py        # Reconstruction inverse
+│       ├── UX.py          # Scripts utilitaires pour tests rapides
+│       └── Vizualitation.py  # Graphiques : masques, spectres, signaux
+│
+├── README.md              # Documentation du projet
+└── rendu latex.tex        # Rapport LaTeX
 
 ```
 
@@ -74,12 +72,12 @@ pip install numpy scipy matplotlib librosa mir_eval
 ```
 ---
 
-## 🚀 Pipeline complet
-###1️⃣ Génération automatique des mixes (`mix.py`)
+## 🚀 Pipeline du projet
+1️⃣ Génération automatique des mixes (`src/mix.py`)
 
 Ce script :
 
-- charge la piste vocale et instrumentale
+- charge la piste vocale et instrumentale `data/Vocals/` et `data/Instrumentals/`
 - convertit en mono si nécessaire
 - normalise chaque signal
 - applique un mix linéaire :
@@ -93,7 +91,7 @@ python src/mix.py
 
 ---
 
-###2️⃣ Analyse temps–fréquence via STFT
+2️⃣ Analyse temps–fréquence via STFT (`src/other/FFT.py`)
 
 Nous utilisons :
 
@@ -105,7 +103,7 @@ Toutes les méthodes de séparation travaillent sur le spectrogramme, jamais sur
 
 ---
 
-###3️⃣ Méthodes de séparation (`separation.py`)
+3️⃣ Méthodes de séparation (`separation.py`)
 
 Nous avons implémenté 4 méthodes :
 
@@ -119,7 +117,7 @@ Nous avons implémenté 4 méthodes :
 
 - Masque hybride (méthode finale) : combinaison pondérée des 3 précédentes. **Meilleure méthode selon notre étude.**
 
-Chaque méthode génère :
+Chaque méthode produit deux fichiers WAV:
 - `vocals_est.wav`
 - `instru_est.wav`
 
@@ -127,17 +125,17 @@ Ainsi que les masques (png), sauvegardés via `Vizualitation.py`.
 
 ---
 
-###4️⃣ Reconstruction temporelle (`src/other/IFFT.py`)
+4️⃣ Reconstruction temporelle (`src/other/IFFT.py`)
 
-- ISTFT via librosa.istft
-- Tests de cohérence sur signaux simples
+- ISTFT via `librosa.istft`.
+- Tests de cohérence sur signaux simples.
 
 Dans le pipeline réel, la reconstruction est déclenchée depuis `separation.py`.
 
 
 ---
 
-###5️⃣ Visualisation (`src/other/Vizualitation.py`)
+5️⃣ Visualisation (`src/other/Vizualitation.py`)
 
 Génère automatiquement :
 
@@ -147,7 +145,7 @@ Génère automatiquement :
 
 ---
 
-###6️⃣ Évaluation SDR / SIR / SAR
+6️⃣ Évaluation SDR / SIR / SAR
 
 Dans `separation.py` :
 
