@@ -3,7 +3,7 @@
 Projet académique **CY Tech — Traitement du signal**  
 Développé en **Python (NumPy, SciPy, Librosa, Matplotlib, mir_eval)**
 
-Réalisé par : Rayane Manseur Rayan Hussein Emine Ould Agatt Florian Vo Romain Bowé Clément Rimbeuf Anthusan Srikaran
+**Réalisé par** : Rayane Manseur, Rayan Hussein, Emine Ould Agatt, Florian Vo, Romain Bowé, Clément Rimbeuf et Anthusan Srikaran
 
 L’**objectif** du projet est de séparer un morceau audio en deux composantes :
 la **voix** et l’**instrumental**, en utilisant des méthodes classiques du traitement du signal :
