@@ -174,7 +174,6 @@ présente dans le signal.
     x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{\frac{2\pi i nk}{N}}.
     \]     
 \end{rappel}
-
 Ainsi, après avoir vu la discrétisation et la transformation en DFT/IDFT, il est naturel de passer à une
 représentation temps–fréquence locale mieux adaptée aux signaux audio réels : la \textbf{Transformée de Fourier
 à Court Terme} (STFT), ainsi que sa version inverse (ISTFT) utilisée pour la reconstruction.
@@ -293,7 +292,7 @@ Ces phénomènes enrichissent le spectre de manière chaotique et compliquent co
 Nous avons donc privilégié des morceaux comportant :
 \begin{itemize}
     \item une voix principale claire et bien isolée,
-    \item une accompagnement instrumental relativement simple,
+    \item un accompagnement instrumental relativement simple,
     \item une texture sonore compatible avec les hypothèses des méthodes utilisées
           (bandes fréquentielles vocales bien identifiables, partie harmonique stable, etc.).
 \end{itemize}
@@ -345,10 +344,18 @@ Afin que le script puisse être exécuté depuis n’importe quel répertoire, n
 \[
 \texttt{inspect.getfile(inspect.currentframe())}.
 \]
-Le code reconstruit ensuite l’arborescence :
-\[
-\texttt{src/} \rightarrow \texttt{data/},\; \texttt{results/}.
-\]
+Le code reconstruit ensuite l'arborescence suivante :
+
+\begin{verbatim}
+project/
+    src/
+    data/
+        Mixes/
+        Vocals/
+        Instrumentals/
+    results/
+\end{verbatim}
+
 Pour chaque fichier mixé :
 \begin{itemize}
     \item un sous-dossier dédié est créé dans \texttt{results/},
@@ -377,115 +384,6 @@ Dans ce chapitre, nous analysons les performances des différentes méthodes de 
 Nous commençons par une analyse qualitative des masques temps-fréquence produits par chaque algorithme, afin d’observer les régions spectrales attribuées à chaque source et de mettre en évidence leurs forces et limites. Puis, nous procédons à une évaluation quantitative des méthodes à l’aide des métriques SDR, SIR et SAR, largement utilisées dans la littérature, afin de comparer objectivement leurs performances.
 
 Ces analyses qualitatives et quantitatives fournissent une vision complète de l’efficacité des approches selon différents critères.
-
-\section{Analyse des masques temps–fréquence}
-
-Afin de mieux comprendre le comportement réel de chaque méthode de séparation,
-nous avons généré, pour chaque mix, un graphe indiquant la classification
-« voix » ou « instrumental » par fréquence. Chaque figure est construite à partir
-du masque temps–fréquence moyen :
-\[
-\overline{M}(f) = \frac{1}{T}\sum_{t=0}^{T-1} M(f,t),
-\]
-puis binarisé par un seuil de 0.5.  
-En rouge : fréquences classées comme \textit{voix}.  
-En bleu : fréquences classées comme \textit{instrumental}.
-
-Ces visualisations donnent une intuition claire de la façon dont chaque méthode
-filtre le spectre du mix.
-
-\subsection{Masque bande (80--4000 Hz)}
-Cette méthode applique un filtre fréquentiel fixe : toutes les fréquences
-comprises entre 80 et 4000~Hz sont considérées comme appartenant à la voix,
-tandis que les basses et les aigus sont attribuées à l'instrumental.
-
-\begin{itemize}
-    \item les fréquences 80--4000~Hz apparaissent entièrement en rouge ;
-    \item les fréquences situées en dehors de cette bande sont entièrement bleues.
-\end{itemize}
-Ce masque repose uniquement sur une connaissance approximative de la gamme
-vocale humaine. Il est efficace pour isoler les voix présentes dans cette
-bande, mais confond de nombreux instruments harmoniques (guitare, piano, synthés)
-qui occupent la même plage.
-\textbf{Conséquences dans les résultats :}
-\begin{itemize}
-    \item SDR\textsubscript{voice} correct mais limité ;
-    \item SIR modéré, car beaucoup d'instruments se trouvent dans la même bande ;
-    \item peu d'artéfacts, masquage simple \(\Rightarrow\) SAR correct.
-\end{itemize}
-
-\subsection{Masque HPSS (Harmonique / Percussif)}
-HPSS sépare le spectre en deux composantes :
-\[
-S = H + P,
-\]
-où \(H\) est la partie harmonique (stable dans le temps) et \(P\) la partie percussive
-(stable dans la fréquence). Nous utilisons \(H\) pour la voix.
-
-Visuellement :
-\begin{itemize}
-    \item presque toutes les fréquences présentent une dominante « voix » (rouge)
-          lorsqu'elles sont harmoniques ;
-    \item les zones percussives ou transitoires apparaissent en bleu.
-\end{itemize}
-HPSS capture naturellement la structure harmonique de la voix, d’où des résultats
-souvent meilleurs que la méthode par bande.
-
-\textbf{Conséquences :}
-\begin{itemize}
-    \item SDR\textsubscript{voice} légèrement supérieur ;
-    \item meilleure isolation de la voix (SIR plus élevé) ;
-    \item risque d’artéfacts : la séparation harmonique/percussive est parfois brutale.
-\end{itemize}
-
-\subsection{Masque basé sur la variabilité temporelle}
-Ce masque repose sur la dérivée temporelle locale du module du spectre :
-\[
-V(f,t) = |M(f,t+1) - M(f,t)|.
-\]
-On estime ainsi les fréquences dont l'énergie varie rapidement avec le temps,
-en supposant que la voix porte une forte variabilité (vibrato, attaques de consonnes).
-
-Cependant, pour nos morceaux — dominés par des voix douces et peu modulées — la variabilité détectée est très faible : la quasi-totalité des fréquences apparaît bleue.
-
-\textbf{Conséquences :}
-\begin{itemize}
-    \item très faible séparation de la voix ;
-    \item SDR\textsubscript{voice} et SIR très bas ;
-    \item méthode peu adaptée à notre dataset.
-\end{itemize}
-
-\subsection{Masque hybride (bande douce + HPSS + variabilité)}
-Le masque hybride combine trois informations :
-\[
-M_{\text{hyb}} = M_{\text{bande}} \;\times\; M_{\text{HPSS}} \;\times\; 
-\left(0.5 + 0.5\,M_{\text{var}}\right).
-\]
-On obtient un masque plus fin, régularisé, qui capture :
-\begin{itemize}
-    \item la connaissance approximative de la voix (bande 80--4000~Hz) ;
-    \item sa nature harmonique (HPSS) ;
-    \item ses variations temporelles (variabilité).
-\end{itemize}
-Le graphe montre une concentration harmonique précise en bas/moyen spectre,
-avec peu d’erreurs de classification.
-
-\textbf{Conséquences :}
-\begin{itemize}
-    \item meilleure performance globale (meilleur SDR\textsubscript{voice}) ;
-    \item moins d'interférences (bonne SIR) ;
-    \item SAR élevé : peu d’artéfacts.
-\end{itemize}
-
-\subsection{Conclusion visuelle}
-Les graphes confirment ce que les métriques numériques montrent :  
-\begin{itemize}
-    \item la méthode par bande fonctionne mais reste approximative ;
-    \item HPSS apporte un gain grâce à la structure harmonique ;
-    \item la variabilité échoue sur notre dataset ;
-    \item le masque hybride combine les avantages des précédentes
-          et obtient la meilleure séparation globale.
-\end{itemize}
 
 \section{Métriques de référence : SDR, SIR et SAR}
 
@@ -601,6 +499,114 @@ Ainsi :
 \end{itemize}
 Cette complémentarité est essentielle pour interpréter correctement les résultats expérimentaux.
 
+\section{Analyse des masques temps–fréquence}
+
+Afin de mieux comprendre le comportement réel de chaque méthode de séparation,
+nous avons généré, pour chaque mix, un graphe indiquant la classification
+« voix » ou « instrumental » par fréquence. Chaque figure est construite à partir
+du masque temps–fréquence moyen :
+\[
+\overline{M}(f) = \frac{1}{T}\sum_{t=0}^{T-1} M(f,t),
+\]
+puis binarisé par un seuil de 0.5.  
+En rouge : fréquences classées comme \textit{voix}.  
+En bleu : fréquences classées comme \textit{instrumental}.
+
+Ces visualisations donnent une intuition claire de la façon dont chaque méthode
+filtre le spectre du mix.
+
+\subsection{Masque bande (80--4000 Hz)}
+Cette méthode applique un filtre fréquentiel fixe : toutes les fréquences
+comprises entre 80 et 4000~Hz sont considérées comme appartenant à la voix,
+tandis que les basses et les aigus sont attribuées à l'instrumental.
+
+\begin{itemize}
+    \item les fréquences 80--4000~Hz apparaissent entièrement en rouge ;
+    \item les fréquences situées en dehors de cette bande sont entièrement bleues.
+\end{itemize}
+Ce masque repose uniquement sur une connaissance approximative de la gamme
+vocale humaine. Il est efficace pour isoler les voix présentes dans cette
+bande, mais confond de nombreux instruments harmoniques (guitare, piano, synthés)
+qui occupent la même plage.
+\textbf{Conséquences dans les résultats :}
+\begin{itemize}
+    \item SDR\textsubscript{voice} correct mais limité ;
+    \item SIR modéré, car beaucoup d'instruments se trouvent dans la même bande ;
+    \item peu d'artéfacts, masquage simple \(\Rightarrow\) SAR correct.
+\end{itemize}
+
+\subsection{Masque HPSS (Harmonique / Percussif)}
+HPSS sépare le spectre en deux composantes :
+\[
+S = H + P,
+\]
+où \(H\) est la partie harmonique (stable dans le temps) et \(P\) la partie percussive
+(stable dans la fréquence). Nous utilisons \(H\) pour la voix.
+
+Visuellement :
+\begin{itemize}
+    \item presque toutes les fréquences présentent une dominante « voix » (rouge)
+          lorsqu'elles sont harmoniques ;
+    \item les zones percussives ou transitoires apparaissent en bleu.
+\end{itemize}
+HPSS capture naturellement la structure harmonique de la voix, d’où des résultats
+souvent meilleurs que la méthode par bande.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item SDR\textsubscript{voice} légèrement supérieur ;
+    \item meilleure isolation de la voix (SIR plus élevé) ;
+    \item risque d’artéfacts : la séparation harmonique/percussive est parfois brutale.
+\end{itemize}
+
+\subsection{Masque basé sur la variabilité temporelle}
+Ce masque repose sur la dérivée temporelle locale du module du spectre :
+\[
+V(f,t) = |M(f,t+1) - M(f,t)|.
+\]
+On estime ainsi les fréquences dont l'énergie varie rapidement avec le temps,
+en supposant que la voix porte une forte variabilité (vibrato, attaques de consonnes).
+
+Cependant, pour nos morceaux — dominés par des voix douces et peu modulées — la variabilité détectée est très faible : la quasi-totalité des fréquences apparaît bleue.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item très faible séparation de la voix ;
+    \item SDR\textsubscript{voice} et SIR très bas ;
+    \item méthode peu adaptée à notre dataset.
+\end{itemize}
+
+\subsection{Masque hybride (bande douce + HPSS + variabilité)}
+Le masque hybride combine trois informations :
+\[
+M_{\text{hyb}} = M_{\text{bande}} \;\times\; M_{\text{HPSS}} \;\times\; 
+\left(0.5 + 0.5\,M_{\text{var}}\right).
+\]
+On obtient un masque plus fin, régularisé, qui capture :
+\begin{itemize}
+    \item la connaissance approximative de la voix (bande 80--4000~Hz) ;
+    \item sa nature harmonique (HPSS) ;
+    \item ses variations temporelles (variabilité).
+\end{itemize}
+Le graphe montre une concentration harmonique précise en bas/moyen spectre,
+avec peu d’erreurs de classification.
+
+\textbf{Conséquences :}
+\begin{itemize}
+    \item meilleure performance globale (meilleur SDR\textsubscript{voice}) ;
+    \item moins d'interférences (bonne SIR) ;
+    \item SAR élevé : peu d’artéfacts.
+\end{itemize}
+
+\subsection{Conclusion visuelle}
+Les graphes confirment ce que les métriques numériques montrent :  
+\begin{itemize}
+    \item la méthode par bande fonctionne mais reste approximative ;
+    \item HPSS apporte un gain grâce à la structure harmonique ;
+    \item la variabilité échoue sur notre dataset ;
+    \item le masque hybride combine les avantages des précédentes
+          et obtient la meilleure séparation globale.
+\end{itemize}
 
 \section{Analyse des résultats expérimentaux}
 
@@ -729,7 +735,7 @@ Les résultats expérimentaux montrent que le filtrage en bande et la méthode H
 
 Le projet présente plusieurs limites : le dataset est restreint et simplifié, les hyperparamètres n'ont pas été explorés systématiquement, et certaines méthodes n'ont pas été comparées avec celles de l'IA moderne. Ces limites ouvrent plusieurs perspectives, telles que l'extension du dataset, l’optimisation des hyperparamètres, la comparaison avec des modèles d’IA (comme Demucs ou Spleeter), et l'intégration dans une application interactive pour une utilisation pratique.
 
-En conclusion, ce projet a rempli son objectif pédagogique en nous permettant de lier théorie et application pratique tout en développant une compréhension des méthodes de séparation audio, avec un focus sur les performances des approches classiques par rapport aux modèles modernes de deep learning.
+En somme, ce projet a rempli son objectif pédagogique en nous permettant de lier théorie et application pratique tout en développant une compréhension des méthodes de séparation audio, avec un focus sur les performances des approches classiques par rapport aux modèles modernes de deep learning.
 
 \begin{thebibliography}{99}
 
